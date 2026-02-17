@@ -1,0 +1,22 @@
+[
+  {
+    "id": "demo_001",
+    "name": "Sakura Cafe",
+    "lat": 35.6586,
+    "lng": 139.7454,
+    "address": "Tokyo (Demo Address)",
+    "photos": ["/photos/demo1.jpg", "/photos/demo2.jpg"],
+    "services": {
+      "diaper_change": true,
+      "diaper_trash": false,
+      "kids_toilet": false,
+      "nursing_room": true,
+      "stroller_access": true,
+      "kids_chair_tableware": true,
+      "parking_car": false,
+      "parking_bicycle": true,
+      "hot_water": true
+    },
+    "note": "Demo data only."
+  }
+]
