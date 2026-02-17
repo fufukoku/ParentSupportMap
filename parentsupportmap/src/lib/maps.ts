@@ -1,4 +1,4 @@
-import { Loader } from "@googlemaps/js-api-loader";
+import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 
 export function getMapsApiKey(): string {
   const k = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -6,11 +6,19 @@ export function getMapsApiKey(): string {
   return k as string;
 }
 
-export async function loadGoogleMaps() {
-  const loader = new Loader({
-    apiKey: getMapsApiKey(),
-    version: "weekly",
-  });
+let configured = false;
 
-  return loader.load();
+export async function loadGoogleMaps() {
+  if (!configured) {
+
+    setOptions({
+      key: getMapsApiKey(),
+      v: "weekly",
+
+    });
+    configured = true;
+  }
+
+  await importLibrary("maps");
+  await importLibrary("marker");
 }
