@@ -11,12 +11,49 @@ export const t = {
     note: "メモ",
     language: "言語",
 
-    // ✅ 你 ShopDrawer 里会用到的 key（之前缺了）
     howToTitle: "使い方",
     howToBody: "地図のピンをクリックすると、施設の提供サービスを確認できます。",
     demoDataOnly: "※デモデータのみ（表示内容はサンプルです）。",
 
-    // ✅ 统一用 snake_case（和你的 Shop.services 字段一致）
+    // ✅ Auth
+    auth: {
+      loginTitle: "ログイン",
+      registerTitle: "新規登録（ユーザー）",
+      email: "メールアドレス",
+      userId: "ユーザーID",
+      password: "パスワード",
+      login: "ログイン",
+      logout: "ログアウト",
+      register: "登録する",
+      toRegister: "新規登録はこちら",
+      toLogin: "ログインはこちら",
+      roleUser: "ユーザー",
+      roleAdmin: "管理者",
+      noteAdminNoRegister: "※管理者は登録できません（運用側で発行）",
+      invalid: "入力内容をご確認ください。",
+      wrongCredential: "IDまたはパスワードが正しくありません。",
+      alreadyExists: "このユーザーIDまたはメールは既に使われています。",
+    },
+
+    // ✅ Admin / CRUD
+    admin: {
+      adminPanel: "管理",
+      addShop: "店舗を追加",
+      editShop: "編集",
+      deleteShop: "削除",
+      save: "保存",
+      cancel: "キャンセル",
+      confirmDelete: "この店舗を削除しますか？（元に戻せません）",
+      name: "店舗名",
+      lat: "緯度",
+      lng: "経度",
+      photos: "写真URL（複数可）",
+      photosHint: "1行に1つURLを入力",
+      noteHint: "簡単な紹介・補足",
+      services: "提供サービス",
+      onlyAdmin: "この操作は管理者のみ可能です。",
+    },
+
     services: {
       diaper_change: "おむつ交換スペース",
       diaper_trash: "おむつ廃棄（ゴミ箱）",
@@ -30,7 +67,7 @@ export const t = {
       notAvailableTitle: "未対応（クリックで表示）",
     },
 
-    // ✅ 兼容你旧代码里 t[lang].svc 的写法（避免你别处也用到了）
+    // compatibility
     svc: {
       diaper_change: "おむつ交換スペース",
       diaper_trash: "おむつ廃棄（ゴミ箱）",
@@ -55,12 +92,49 @@ export const t = {
     note: "Note",
     language: "Language",
 
-    // ✅ 你 ShopDrawer 里会用到的 key（之前缺了）
     howToTitle: "How to use",
     howToBody: "Click a pin on the map to view available services at that place.",
     demoDataOnly: "Demo data only (sample content).",
 
-    // ✅ snake_case
+    // ✅ Auth
+    auth: {
+      loginTitle: "Login",
+      registerTitle: "Register (User)",
+      email: "Email",
+      userId: "User ID",
+      password: "Password",
+      login: "Login",
+      logout: "Logout",
+      register: "Create account",
+      toRegister: "Create a new account",
+      toLogin: "Back to login",
+      roleUser: "User",
+      roleAdmin: "Admin",
+      noteAdminNoRegister: "Admins cannot register (created by operators).",
+      invalid: "Please check your input.",
+      wrongCredential: "Invalid ID/email or password.",
+      alreadyExists: "This user ID or email is already used.",
+    },
+
+    // ✅ Admin / CRUD
+    admin: {
+      adminPanel: "Admin",
+      addShop: "Add shop",
+      editShop: "Edit",
+      deleteShop: "Delete",
+      save: "Save",
+      cancel: "Cancel",
+      confirmDelete: "Delete this shop? (Cannot be undone)",
+      name: "Shop name",
+      lat: "Latitude",
+      lng: "Longitude",
+      photos: "Photo URLs (multiple)",
+      photosHint: "One URL per line",
+      noteHint: "Short description / note",
+      services: "Services",
+      onlyAdmin: "This action is for admins only.",
+    },
+
     services: {
       diaper_change: "Diaper-changing space",
       diaper_trash: "Diaper disposal (trash bin)",
@@ -74,7 +148,7 @@ export const t = {
       notAvailableTitle: "Not available (click to expand)",
     },
 
-    // ✅ 兼容旧写法
+    // compatibility
     svc: {
       diaper_change: "Diaper-changing space",
       diaper_trash: "Diaper disposal (trash bin)",
