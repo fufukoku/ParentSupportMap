@@ -1,15 +1,14 @@
 // src/App.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { Shop, ServiceKey } from "./types";
+import type { Shop, ServiceKey, Services } from "./types";
 import type { Lang } from "./i18n";
 import { t } from "./i18n";
 
 import MapView from "./components/MapView";
 import ShopDrawer from "./components/ShopDrawer";
 import FilterPanel from "./components/FilterPanel";
-import shopsRaw from "./data/shops.demo.json";
 
 import type { Session } from "./repos/auth/types";
 import { localAuthRepo } from "./repos/auth/localAuthRepo";
@@ -28,7 +27,81 @@ export default function App({
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<ServiceKey[]>([]);
 
-  const shops = useMemo(() => shopsRaw as Shop[], []);
+  // ✅ API Base（来自 .env.local）
+  const API_BASE =
+    import.meta.env.VITE_API_BASE ??
+    "https://zzvcdp16u5.execute-api.ap-northeast-1.amazonaws.com/dev";
+
+  // ✅ 线上 shops
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [shopsLoading, setShopsLoading] = useState(false);
+  const [shopsError, setShopsError] = useState<string | null>(null);
+
+  // ===== services 映射：后端 string[] -> 前端 Record<ServiceKey, boolean> =====
+  const SERVICE_KEYS: ServiceKey[] = [
+    "diaper_change",
+    "diaper_trash",
+    "kids_toilet",
+    "nursing_room",
+    "stroller_access",
+    "kids_chair_tableware",
+    "parking_car",
+    "parking_bicycle",
+    "hot_water",
+  ];
+
+  function emptyServices(): Services {
+    return Object.fromEntries(SERVICE_KEYS.map((k) => [k, false])) as Services;
+  }
+
+  function toServicesRecord(arr: unknown): Services {
+    const rec = emptyServices();
+    if (Array.isArray(arr)) {
+      for (const k of arr) {
+        if (SERVICE_KEYS.includes(k as ServiceKey)) {
+          rec[k as ServiceKey] = true;
+        }
+      }
+    }
+    return rec;
+  }
+
+  // ===== 拉取线上数据 =====
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setShopsLoading(true);
+      setShopsError(null);
+      try {
+        const res = await fetch(`${API_BASE}/shops`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json(); // { items: [...] }
+
+        const mapped: Shop[] = (data.items ?? []).map((a: any) => ({
+          id: String(a.shopId ?? a.id ?? ""),
+          name: a.nameJa || a.nameEn || a.name || "Unnamed",
+          lat: Number(a.lat ?? 0),
+          lng: Number(a.lng ?? 0),
+          address: a.address ?? "",
+          photos: a.imageUrls ?? a.photos ?? [],
+          services: toServicesRecord(a.services),
+          note: a.note ?? "",
+        }));
+
+        if (!cancelled) setShops(mapped);
+      } catch (e: any) {
+        if (!cancelled) setShopsError(e?.message || "Failed to load shops");
+      } finally {
+        if (!cancelled) setShopsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [API_BASE]);
+
   const nav = useNavigate();
   const auth = useMemo(() => localAuthRepo(), []);
 
@@ -43,7 +116,6 @@ export default function App({
   const logout = () => {
     auth.logout();
     onSessionChanged();
-    // 可选：登出后把 admin drawer 状态清掉
   };
 
   return (
@@ -51,7 +123,10 @@ export default function App({
       <header style={styles.header}>
         <div>
           <div style={styles.title}>{t[lang].appTitle}</div>
-          <div style={styles.sub}>{t[lang].demoNotice}</div>
+          <div style={styles.sub}>
+            {/* 你现在是 dev online：这里先显示一个提示 */}
+            API: {API_BASE}
+          </div>
         </div>
 
         <div style={styles.headerRight}>
@@ -106,20 +181,33 @@ export default function App({
       </header>
 
       <main style={styles.main}>
-        <section style={styles.mapPane}>
-          {/* ✅ 地图容器需要 position: relative，FilterPanel 才能绝对定位在左上角 */}
-          <div style={styles.mapWrap}>
-            <MapView shops={filteredShops} onSelect={(s) => setSelectedShop(s)} />
+        {shopsLoading ? (
+          <div style={{ padding: 8, color: "#6b7280", fontSize: 12 }}>
+            Loading shops…
+          </div>
+        ) : null}
+        {shopsError ? (
+          <div style={{ padding: 8, color: "#b91c1c", fontSize: 12 }}>
+            Failed to load shops: {shopsError}
+          </div>
+        ) : null}
 
-            {/* ✅ 恢复筛选按钮 */}
+        <section style={styles.mapPane}>
+          <div style={styles.mapWrap}>
+            <MapView
+              shops={filteredShops}
+              onSelect={(s) => setSelectedShop(s)}
+            />
+
             <FilterPanel
               lang={lang}
               selected={selectedServices}
               onChange={(next) => {
                 setSelectedServices(next);
-                // 如果当前选中的店已经不满足筛选，关闭 Drawer
                 if (selectedShop && next.length > 0) {
-                  const ok = next.every((k) => Boolean(selectedShop.services?.[k]));
+                  const ok = next.every((k) =>
+                    Boolean(selectedShop.services?.[k])
+                  );
                   if (!ok) setSelectedShop(null);
                 }
               }}
@@ -206,7 +294,6 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
   },
 
-  // ✅ 关键：让 FilterPanel 的 absolute 相对这个容器定位
   mapWrap: {
     position: "relative",
     width: "100%",
