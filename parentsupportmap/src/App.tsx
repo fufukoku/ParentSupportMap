@@ -13,6 +13,25 @@ import FilterPanel from "./components/FilterPanel";
 import type { Session } from "./repos/auth/types";
 import { localAuthRepo } from "./repos/auth/localAuthRepo";
 
+const SERVICE_KEYS: ServiceKey[] = [
+  "diaper_change",
+  "diaper_trash",
+  "kids_toilet",
+  "nursing_room",
+  "stroller_access",
+  "kids_chair_tableware",
+  "parking_car",
+  "parking_bicycle",
+  "hot_water",
+];
+
+function servicesFromArray(arr: any): Services {
+  const set = new Set<string>(Array.isArray(arr) ? arr : []);
+  const out: any = {};
+  for (const k of SERVICE_KEYS) out[k] = set.has(k);
+  return out as Services;
+}
+
 export default function App({
   session,
   onSessionChanged,
@@ -27,46 +46,14 @@ export default function App({
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<ServiceKey[]>([]);
 
-  // ✅ API Base（来自 .env.local）
   const API_BASE =
-    import.meta.env.VITE_API_BASE ??
+    (import.meta.env.VITE_API_BASE as string | undefined) ??
     "https://zzvcdp16u5.execute-api.ap-northeast-1.amazonaws.com/dev";
 
-  // ✅ 线上 shops
   const [shops, setShops] = useState<Shop[]>([]);
   const [shopsLoading, setShopsLoading] = useState(false);
   const [shopsError, setShopsError] = useState<string | null>(null);
 
-  // ===== services 映射：后端 string[] -> 前端 Record<ServiceKey, boolean> =====
-  const SERVICE_KEYS: ServiceKey[] = [
-    "diaper_change",
-    "diaper_trash",
-    "kids_toilet",
-    "nursing_room",
-    "stroller_access",
-    "kids_chair_tableware",
-    "parking_car",
-    "parking_bicycle",
-    "hot_water",
-  ];
-
-  function emptyServices(): Services {
-    return Object.fromEntries(SERVICE_KEYS.map((k) => [k, false])) as Services;
-  }
-
-  function toServicesRecord(arr: unknown): Services {
-    const rec = emptyServices();
-    if (Array.isArray(arr)) {
-      for (const k of arr) {
-        if (SERVICE_KEYS.includes(k as ServiceKey)) {
-          rec[k as ServiceKey] = true;
-        }
-      }
-    }
-    return rec;
-  }
-
-  // ===== 拉取线上数据 =====
   useEffect(() => {
     let cancelled = false;
 
@@ -78,16 +65,19 @@ export default function App({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json(); // { items: [...] }
 
-        const mapped: Shop[] = (data.items ?? []).map((a: any) => ({
-          id: String(a.shopId ?? a.id ?? ""),
-          name: a.nameJa || a.nameEn || a.name || "Unnamed",
-          lat: Number(a.lat ?? 0),
-          lng: Number(a.lng ?? 0),
-          address: a.address ?? "",
-          photos: a.imageUrls ?? a.photos ?? [],
-          services: toServicesRecord(a.services),
-          note: a.note ?? "",
-        }));
+        const mapped = (data.items ?? []).map((a: any) => {
+          const name = a.nameJa || a.nameEn || "Unnamed";
+          return {
+            id: a.shopId,
+            name,
+            lat: Number(a.lat ?? 0),
+            lng: Number(a.lng ?? 0),
+            address: a.address ?? "",
+            photos: Array.isArray(a.imageUrls) ? a.imageUrls : [],
+            services: servicesFromArray(a.services),
+            note: a.descriptionJa || a.descriptionEn || "",
+          } as Shop;
+        });
 
         if (!cancelled) setShops(mapped);
       } catch (e: any) {
@@ -105,12 +95,9 @@ export default function App({
   const nav = useNavigate();
   const auth = useMemo(() => localAuthRepo(), []);
 
-  // ✅ 过滤逻辑：满足 ALL 被选择的服务
   const filteredShops = useMemo(() => {
     if (selectedServices.length === 0) return shops;
-    return shops.filter((s) =>
-      selectedServices.every((k) => Boolean(s.services?.[k]))
-    );
+    return shops.filter((s) => selectedServices.every((k) => Boolean(s.services?.[k])));
   }, [shops, selectedServices]);
 
   const logout = () => {
@@ -124,13 +111,12 @@ export default function App({
         <div>
           <div style={styles.title}>{t[lang].appTitle}</div>
           <div style={styles.sub}>
-            {/* 你现在是 dev online：这里先显示一个提示 */}
-            API: {API_BASE}
+            {t[lang].demoNotice}
+            <span style={{ marginLeft: 10, color: "#9ca3af" }}>API: {API_BASE}</span>
           </div>
         </div>
 
         <div style={styles.headerRight}>
-          {/* 语言 */}
           <div style={styles.langBox}>
             <span style={styles.langLabel}>{t[lang].language}</span>
             <select
@@ -143,13 +129,8 @@ export default function App({
             </select>
           </div>
 
-          {/* 登录状态 */}
           {!session ? (
-            <button
-              type="button"
-              onClick={() => nav("/login")}
-              style={styles.authBtn}
-            >
+            <button type="button" onClick={() => nav("/login")} style={styles.authBtn}>
               Login
             </button>
           ) : (
@@ -159,20 +140,12 @@ export default function App({
               </span>
 
               {session.role === "admin" ? (
-                <button
-                  type="button"
-                  onClick={() => nav("/admin")}
-                  style={styles.authBtn}
-                >
+                <button type="button" onClick={() => nav("/admin")} style={styles.authBtn}>
                   Admin
                 </button>
               ) : null}
 
-              <button
-                type="button"
-                onClick={logout}
-                style={{ ...styles.authBtn, opacity: 0.9 }}
-              >
+              <button type="button" onClick={logout} style={{ ...styles.authBtn, opacity: 0.9 }}>
                 Logout
               </button>
             </div>
@@ -182,9 +155,7 @@ export default function App({
 
       <main style={styles.main}>
         {shopsLoading ? (
-          <div style={{ padding: 8, color: "#6b7280", fontSize: 12 }}>
-            Loading shops…
-          </div>
+          <div style={{ padding: 8, color: "#6b7280", fontSize: 12 }}>Loading shops…</div>
         ) : null}
         {shopsError ? (
           <div style={{ padding: 8, color: "#b91c1c", fontSize: 12 }}>
@@ -194,10 +165,7 @@ export default function App({
 
         <section style={styles.mapPane}>
           <div style={styles.mapWrap}>
-            <MapView
-              shops={filteredShops}
-              onSelect={(s) => setSelectedShop(s)}
-            />
+            <MapView shops={filteredShops} onSelect={(s) => setSelectedShop(s)} />
 
             <FilterPanel
               lang={lang}
@@ -205,9 +173,7 @@ export default function App({
               onChange={(next) => {
                 setSelectedServices(next);
                 if (selectedShop && next.length > 0) {
-                  const ok = next.every((k) =>
-                    Boolean(selectedShop.services?.[k])
-                  );
+                  const ok = next.every((k) => Boolean(selectedShop.services?.[k]));
                   if (!ok) setSelectedShop(null);
                 }
               }}
@@ -218,11 +184,7 @@ export default function App({
         </section>
 
         <aside style={styles.sidePane}>
-          <ShopDrawer
-            lang={lang}
-            shop={selectedShop}
-            onClose={() => setSelectedShop(null)}
-          />
+          <ShopDrawer lang={lang} shop={selectedShop} onClose={() => setSelectedShop(null)} />
         </aside>
       </main>
     </div>
@@ -251,12 +213,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: { fontSize: 18, fontWeight: 900, letterSpacing: 0.2 },
   sub: { fontSize: 12, color: "#6b7280", marginTop: 2 },
 
-  headerRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-  },
-
+  headerRight: { display: "flex", alignItems: "center", gap: 10 },
   langBox: { display: "flex", alignItems: "center", gap: 8 },
   langLabel: { fontSize: 12, color: "#6b7280" },
   select: {
@@ -294,11 +251,7 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
   },
 
-  mapWrap: {
-    position: "relative",
-    width: "100%",
-    height: "100%",
-  },
+  mapWrap: { position: "relative", width: "100%", height: "100%" },
 
   sidePane: {
     borderRadius: 18,
