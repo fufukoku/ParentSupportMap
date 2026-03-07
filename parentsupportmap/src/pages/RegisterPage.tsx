@@ -1,19 +1,23 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { AuthRepo } from "../repos/auth/types";
+import type { Lang } from "../i18n";
+import { t } from "../i18n";
 
-function getPasswordChecks(password: string) {
+const LANG_KEY = "psm_lang";
+
+function getPasswordChecks(lang: Lang, password: string) {
   return [
-    { key: "len", label: "At least 8 characters", ok: password.length >= 8 },
-    { key: "upper", label: "At least 1 uppercase letter (A-Z)", ok: /[A-Z]/.test(password) },
-    { key: "lower", label: "At least 1 lowercase letter (a-z)", ok: /[a-z]/.test(password) },
-    { key: "num", label: "At least 1 number (0-9)", ok: /[0-9]/.test(password) },
-    { key: "special", label: "At least 1 special character", ok: /[^A-Za-z0-9]/.test(password) },
+    { key: "len", label: t[lang].auth.pwRuleLen, ok: password.length >= 8 },
+    { key: "upper", label: t[lang].auth.pwRuleUpper, ok: /[A-Z]/.test(password) },
+    { key: "lower", label: t[lang].auth.pwRuleLower, ok: /[a-z]/.test(password) },
+    { key: "num", label: t[lang].auth.pwRuleNum, ok: /[0-9]/.test(password) },
+    { key: "special", label: t[lang].auth.pwRuleSpecial, ok: /[^A-Za-z0-9]/.test(password) },
   ];
 }
 
-function validatePassword(password: string): string | null {
-  const checks = getPasswordChecks(password);
+function validatePassword(lang: Lang, password: string): string | null {
+  const checks = getPasswordChecks(lang, password);
   const failed = checks.find((c) => !c.ok);
   return failed ? failed.label : null;
 }
@@ -24,16 +28,30 @@ export default function RegisterPage({
   auth: AuthRepo;
 }) {
   const nav = useNavigate();
+
+  const [lang, setLang] = useState<Lang>(() => {
+    const saved = localStorage.getItem(LANG_KEY);
+    return saved === "en" ? "en" : "ja";
+  });
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const checks = useMemo(() => getPasswordChecks(password), [password]);
+  useEffect(() => {
+    localStorage.setItem(LANG_KEY, lang);
+  }, [lang]);
+
+  const checks = useMemo(() => getPasswordChecks(lang, password), [lang, password]);
   const passedCount = checks.filter((c) => c.ok).length;
 
   const strengthLabel =
-    passedCount <= 2 ? "Weak" : passedCount <= 4 ? "Medium" : "Strong";
+    passedCount <= 2
+      ? t[lang].auth.strengthWeak
+      : passedCount <= 4
+      ? t[lang].auth.strengthMedium
+      : t[lang].auth.strengthStrong;
 
   const strengthWidth =
     passedCount <= 2 ? "33%" : passedCount <= 4 ? "66%" : "100%";
@@ -42,9 +60,9 @@ export default function RegisterPage({
     e.preventDefault();
     setErr(null);
 
-    const pwErr = validatePassword(password);
+    const pwErr = validatePassword(lang, password);
     if (pwErr) {
-      setErr(`Password requirement not met: ${pwErr}`);
+      setErr(`${t[lang].auth.passwordRequirementNotMet} ${pwErr}`);
       return;
     }
 
@@ -65,18 +83,34 @@ export default function RegisterPage({
   return (
     <div style={wrap}>
       <div style={card}>
-        <div style={eyebrow}>ParentSupportMap</div>
-        <div style={title}>Create your account</div>
-        <div style={sub}>
-          Register with your email, then enter the verification code sent by Cognito.
+        <div style={topBar}>
+          <button type="button" onClick={() => nav("/")} style={ghostBtn}>
+            ← {t[lang].auth.backHome}
+          </button>
+
+          <div style={langBox}>
+            <span style={langLabel}>{t[lang].language}</span>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value as Lang)}
+              style={select}
+            >
+              <option value="ja">日本語</option>
+              <option value="en">English</option>
+            </select>
+          </div>
         </div>
+
+        <div style={eyebrow}>PARENTSUPPORTMAP</div>
+        <div style={title}>{t[lang].auth.registerTitle}</div>
+        <div style={sub}>{t[lang].auth.createIntro}</div>
 
         <form onSubmit={submit} style={{ display: "grid", gap: 12, marginTop: 16 }}>
           <label style={field}>
-            <div style={label}>Email</div>
+            <div style={label}>{t[lang].auth.email}</div>
             <input
               style={input}
-              placeholder="you@example.com"
+              placeholder={t[lang].auth.emailPlaceholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
@@ -84,10 +118,10 @@ export default function RegisterPage({
           </label>
 
           <label style={field}>
-            <div style={label}>Password</div>
+            <div style={label}>{t[lang].auth.password}</div>
             <input
               style={input}
-              placeholder="Enter a secure password"
+              placeholder={t[lang].auth.passwordPlaceholder}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -97,7 +131,7 @@ export default function RegisterPage({
 
           <div style={hintCard}>
             <div style={hintHead}>
-              <div style={hintTitle}>Password requirements</div>
+              <div style={hintTitle}>{t[lang].auth.passwordRequirements}</div>
               <div style={strengthBadge}>{strengthLabel}</div>
             </div>
 
@@ -118,12 +152,12 @@ export default function RegisterPage({
           {err ? <div style={errStyle}>{err}</div> : null}
 
           <button style={btn} disabled={busy}>
-            {busy ? "Creating..." : "Create account"}
+            {busy ? t[lang].auth.creating : t[lang].auth.createAccount}
           </button>
         </form>
 
         <div style={foot}>
-          Already have an account? <Link to="/login">Login</Link>
+          {t[lang].auth.alreadyAccount} <Link to="/login">{t[lang].auth.loginTitle}</Link>
         </div>
       </div>
     </div>
@@ -140,7 +174,7 @@ const wrap: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  width: "min(520px, 100%)",
+  width: "min(560px, 100%)",
   borderRadius: 24,
   border: "1px solid #e7e9f0",
   background: "rgba(255,255,255,0.96)",
@@ -148,9 +182,49 @@ const card: React.CSSProperties = {
   boxShadow: "0 24px 60px rgba(15,23,42,0.10)",
 };
 
-const eyebrow: React.CSSProperties = {
-  fontSize: 12,
+const topBar: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const ghostBtn: React.CSSProperties = {
+  border: "1px solid #dbe1ea",
+  background: "white",
+  color: "#0f172a",
+  borderRadius: 14,
+  padding: "10px 12px",
+  cursor: "pointer",
   fontWeight: 800,
+};
+
+const langBox: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const langLabel: React.CSSProperties = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 700,
+};
+
+const select: React.CSSProperties = {
+  border: "1px solid #dbe1ea",
+  borderRadius: 14,
+  padding: "10px 12px",
+  background: "white",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const eyebrow: React.CSSProperties = {
+  marginTop: 18,
+  fontSize: 12,
+  fontWeight: 900,
   color: "#2563eb",
   letterSpacing: 0.4,
   textTransform: "uppercase",

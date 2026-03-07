@@ -13,6 +13,8 @@ import FilterPanel from "./components/FilterPanel";
 import type { Session } from "./repos/auth/types";
 import { cognitoAuthRepo } from "./repos/auth/cognitoAuthRepo";
 
+const LANG_KEY = "psm_lang";
+
 const SERVICE_KEYS: ServiceKey[] = [
   "diaper_change",
   "diaper_trash",
@@ -39,7 +41,11 @@ export default function App({
   session: Session | null;
   onSessionChanged: () => Promise<void> | void;
 }) {
-  const [lang, setLang] = useState<Lang>("ja");
+  const [lang, setLang] = useState<Lang>(() => {
+    const saved = localStorage.getItem(LANG_KEY);
+    return saved === "en" ? "en" : "ja";
+  });
+
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<ServiceKey[]>([]);
@@ -53,6 +59,10 @@ export default function App({
   const [shopsError, setShopsError] = useState<string | null>(null);
 
   const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(LANG_KEY, lang);
+  }, [lang]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 980px)");
@@ -74,7 +84,8 @@ export default function App({
         const data = await res.json();
 
         const mapped = (data.items ?? []).map((a: any) => {
-          const name = a.nameJa || a.nameEn || "Unnamed";
+          const name = lang === "ja" ? a.nameJa || a.nameEn || "Unnamed" : a.nameEn || a.nameJa || "Unnamed";
+          const note = lang === "ja" ? a.descriptionJa || a.descriptionEn || "" : a.descriptionEn || a.descriptionJa || "";
           return {
             id: a.shopId,
             name,
@@ -83,7 +94,7 @@ export default function App({
             address: a.address ?? "",
             photos: Array.isArray(a.imageUrls) ? a.imageUrls : [],
             services: servicesFromArray(a.services),
-            note: a.descriptionJa || a.descriptionEn || "",
+            note,
           } as Shop;
         });
 
@@ -98,7 +109,7 @@ export default function App({
     return () => {
       cancelled = true;
     };
-  }, [API_BASE]);
+  }, [API_BASE, lang]);
 
   const nav = useNavigate();
   const auth = useMemo(() => cognitoAuthRepo(), []);
@@ -118,59 +129,53 @@ export default function App({
   return (
     <div style={styles.page}>
       <header style={styles.header}>
-        <div style={{ minWidth: 260, flex: "1 1 auto" }}>
-          <div style={styles.title}>{t[lang].appTitle}</div>
-          <div style={styles.sub}>
-            {t[lang].demoNotice}
-            <span style={styles.apiText}>
-              API:&nbsp;
-              <a href={API_BASE} target="_blank" rel="noreferrer" style={styles.apiLink}>
-                {API_BASE}
-              </a>
-            </span>
-          </div>
-        </div>
-
-        <div style={styles.headerRight}>
-          <div style={styles.langBox}>
-            <span style={styles.langLabel}>{t[lang].language}</span>
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value as Lang)}
-              style={styles.select}
-            >
-              <option value="ja">日本語</option>
-              <option value="en">English</option>
-            </select>
+        <div style={styles.headerTop}>
+          <div style={styles.brandBlock}>
+            <div style={styles.brandEyebrow}>PARENTSUPPORTMAP</div>
+            <div style={styles.title}>{t[lang].appTitle}</div>
+            <div style={styles.sub}>{t[lang].appSubtitle}</div>
           </div>
 
-          {!session ? (
-            <button type="button" onClick={() => nav("/login")} style={styles.authBtn}>
-              Login
-            </button>
-          ) : (
-            <div style={styles.sessionBox}>
-              <span style={styles.sessionText}>
-                {session.email}
-                {session.role === "admin" ? " (admin)" : ""}
-              </span>
-
-              {session.role === "admin" ? (
-                <button type="button" onClick={() => nav("/admin")} style={styles.authBtn}>
-                  Admin
-                </button>
-              ) : null}
-
-              <button type="button" onClick={logout} style={styles.authBtn}>
-                Logout
-              </button>
+          <div style={styles.headerActions}>
+            <div style={styles.langBox}>
+              <span style={styles.langLabel}>{t[lang].language}</span>
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value as Lang)}
+                style={styles.select}
+              >
+                <option value="ja">日本語</option>
+                <option value="en">English</option>
+              </select>
             </div>
-          )}
+
+            {!session ? (
+              <button type="button" onClick={() => nav("/login")} style={styles.primaryBtn}>
+                {t[lang].header.login}
+              </button>
+            ) : (
+              <div style={styles.sessionBox}>
+                <span style={styles.sessionText}>{session.email}</span>
+
+                {session.role === "admin" ? (
+                  <button type="button" onClick={() => nav("/admin")} style={styles.authBtn}>
+                    {t[lang].header.admin}
+                  </button>
+                ) : null}
+
+                <button type="button" onClick={logout} style={styles.authBtn}>
+                  {t[lang].header.logout}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+
+        {!session ? <div style={styles.headerNote}>{t[lang].header.guestCta}</div> : null}
       </header>
 
-      {shopsLoading ? <div style={styles.bannerInfo}>Loading shops…</div> : null}
-      {shopsError ? <div style={styles.bannerError}>Failed to load shops: {shopsError}</div> : null}
+      {shopsLoading ? <div style={styles.bannerInfo}>Loading places…</div> : null}
+      {shopsError ? <div style={styles.bannerError}>Failed to load places: {shopsError}</div> : null}
 
       <main
         style={{
@@ -180,7 +185,7 @@ export default function App({
       >
         <section style={styles.mapPane}>
           <div style={styles.mapWrap}>
-            <MapView shops={filteredShops} onSelect={(s) => setSelectedShop(s)} />
+            <MapView lang={lang} shops={filteredShops} onSelect={(s) => setSelectedShop(s)} />
 
             <FilterPanel
               lang={lang}
@@ -214,62 +219,148 @@ export default function App({
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    height: "100vh",
+    minHeight: "100vh",
     padding: 12,
     boxSizing: "border-box",
-    background: "#f6f7fb",
+    background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
   },
+
   header: {
+    padding: "18px 20px 16px",
+    borderRadius: 24,
+    border: "1px solid #e7e9f0",
+    background: "rgba(255,255,255,0.94)",
+    backdropFilter: "blur(8px)",
+    boxShadow: "0 18px 48px rgba(15,23,42,0.06)",
+  },
+
+  headerTop: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
-    padding: "12px 14px",
-    borderRadius: 16,
-    border: "1px solid #e7e9f0",
-    background: "rgba(255,255,255,0.9)",
-    backdropFilter: "blur(6px)",
+    gap: 16,
     flexWrap: "wrap",
   },
-  title: { fontSize: 18, fontWeight: 900, letterSpacing: 0.2 },
-  sub: { fontSize: 12, color: "#6b7280", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" },
-  apiText: { color: "#9ca3af" },
-  apiLink: { color: "#2563eb", textDecoration: "none", wordBreak: "break-all" },
 
-  headerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
-  langBox: { display: "flex", alignItems: "center", gap: 8 },
-  langLabel: { fontSize: 12, color: "#6b7280" },
+  brandBlock: {
+    minWidth: 260,
+    flex: "1 1 auto",
+  },
+
+  brandEyebrow: {
+    fontSize: 12,
+    fontWeight: 900,
+    letterSpacing: 0.6,
+    color: "#2563eb",
+    textTransform: "uppercase",
+  },
+
+  title: {
+    marginTop: 8,
+    fontSize: 24,
+    fontWeight: 900,
+    letterSpacing: 0.2,
+    color: "#0f172a",
+    lineHeight: 1.15,
+  },
+
+  sub: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#64748b",
+    lineHeight: 1.5,
+    maxWidth: 620,
+  },
+
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+
+  headerNote: {
+    marginTop: 12,
+    fontSize: 13,
+    color: "#64748b",
+    lineHeight: 1.5,
+  },
+
+  langBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  langLabel: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+  },
+
   select: {
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: "8px 10px",
+    border: "1px solid #dbe1ea",
+    borderRadius: 14,
+    padding: "10px 12px",
     background: "white",
+    fontSize: 14,
+    fontWeight: 700,
+  },
+
+  sessionBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+
+  sessionText: {
+    fontSize: 13,
+    color: "#334155",
+    fontWeight: 800,
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 999,
+    padding: "10px 14px",
+  },
+
+  primaryBtn: {
+    border: "1px solid #0f172a",
+    background: "#0f172a",
+    color: "white",
+    borderRadius: 14,
+    padding: "10px 14px",
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.14)",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
   },
 
   authBtn: {
-    border: "1px solid #e7e9f0",
+    border: "1px solid #dbe1ea",
     background: "white",
-    borderRadius: 12,
-    padding: "8px 10px",
+    borderRadius: 14,
+    padding: "10px 14px",
     cursor: "pointer",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.04)",
     fontWeight: 800,
     whiteSpace: "nowrap",
   },
-  sessionBox: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  sessionText: { fontSize: 12, color: "#374151", fontWeight: 800 },
 
   bannerInfo: {
-    marginTop: 10,
+    marginTop: 12,
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid #e7e9f0",
     background: "rgba(255,255,255,0.9)",
-    color: "#6b7280",
+    color: "#64748b",
     fontSize: 12,
   },
+
   bannerError: {
-    marginTop: 10,
+    marginTop: 12,
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid #fee2e2",
@@ -279,30 +370,35 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   main: {
-    marginTop: 12,
-    height: "calc(100% - 86px)",
+    marginTop: 14,
+    minHeight: "calc(100vh - 145px)",
     display: "grid",
     gap: 12,
-    minHeight: 0,
   },
 
   mapPane: {
-    borderRadius: 18,
+    borderRadius: 24,
     overflow: "hidden",
     border: "1px solid #e7e9f0",
     background: "white",
     minWidth: 0,
     minHeight: 0,
+    boxShadow: "0 18px 48px rgba(15,23,42,0.05)",
   },
 
-  mapWrap: { position: "relative", width: "100%", height: "100%" },
+  mapWrap: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+  },
 
   sidePane: {
-    borderRadius: 18,
+    borderRadius: 24,
     overflow: "hidden",
     border: "1px solid #e7e9f0",
     background: "white",
     minWidth: 0,
     minHeight: 0,
+    boxShadow: "0 18px 48px rgba(15,23,42,0.05)",
   },
 };

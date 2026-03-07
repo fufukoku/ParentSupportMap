@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Shop, ServiceKey } from "../types";
+import type { Lang } from "../i18n";
+import { t } from "../i18n";
 import { loadGoogleMaps } from "../lib/maps";
 import { SERVICE_META } from "../constants/serviceMeta";
 
 type Props = {
+  lang: Lang;
   shops: Shop[];
   onSelect: (shop: Shop) => void;
 };
@@ -16,7 +19,7 @@ const TOP_SERVICE_KEYS: ServiceKey[] = [
   "hot_water",
 ];
 
-export default function MapView({ shops, onSelect }: Props) {
+export default function MapView({ lang, shops, onSelect }: Props) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
@@ -96,27 +99,25 @@ export default function MapView({ shops, onSelect }: Props) {
               }
 
               previewOpenedShopIdRef.current = s.id;
-              infoWindow.setContent(buildPreviewHtml(s, true));
+              infoWindow.setContent(buildPreviewHtml(lang, s, true));
               infoWindow.open({ map, anchor: marker! });
               return;
             }
 
             onSelect(s);
-            infoWindow.setContent(buildPreviewHtml(s, false));
+            infoWindow.setContent(buildPreviewHtml(lang, s, false));
             infoWindow.open({ map, anchor: marker! });
           });
 
           marker.addListener("mouseover", () => {
             if (isTouchLike) return;
-            infoWindow.setContent(buildPreviewHtml(s, false));
+            infoWindow.setContent(buildPreviewHtml(lang, s, false));
             infoWindow.open({ map, anchor: marker! });
           });
 
           marker.addListener("mouseout", () => {
             if (isTouchLike) return;
-            setTimeout(() => {
-              infoWindow.close();
-            }, 120);
+            setTimeout(() => infoWindow.close(), 120);
           });
 
           markersRef.current.set(key, marker);
@@ -138,7 +139,7 @@ export default function MapView({ shops, onSelect }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [shops, onSelect, center, isTouchLike]);
+  }, [lang, shops, onSelect, center, isTouchLike]);
 
   const locateMe = async () => {
     setLocErr(null);
@@ -172,7 +173,7 @@ export default function MapView({ shops, onSelect }: Props) {
         meMarkerRef.current = new google.maps.Marker({
           map,
           position: p,
-          title: "You are here",
+          title: t[lang].map.locateMe,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 8,
@@ -245,8 +246,8 @@ export default function MapView({ shops, onSelect }: Props) {
             fontSize: 18,
             fontWeight: 900,
           }}
-          aria-label="Locate me"
-          title="Locate me"
+          aria-label={t[lang].map.locateMe}
+          title={t[lang].map.locateMe}
         >
           {locating ? "…" : "📍"}
         </button>
@@ -273,13 +274,13 @@ export default function MapView({ shops, onSelect }: Props) {
   );
 }
 
-function buildPreviewHtml(shop: Shop, touchLike: boolean): string {
+function buildPreviewHtml(lang: Lang, shop: Shop, touchLike: boolean): string {
   const services = TOP_SERVICE_KEYS.filter((k) => Boolean(shop.services?.[k])).slice(0, 2);
 
   const chips = services
     .map((k) => {
       const emoji = SERVICE_META[k].emoji;
-      const label = k.replaceAll("_", " ");
+      const label = t[lang].services[k];
       return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;font-size:11px;font-weight:700;color:#1d4ed8;">${emoji} ${escapeHtml(
         label
       )}</span>`;
@@ -301,7 +302,7 @@ function buildPreviewHtml(shop: Shop, touchLike: boolean): string {
       }
       ${chips ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>` : ""}
       <div style="margin-top:8px;font-size:11px;color:#2563eb;font-weight:700;">${
-        touchLike ? "Tap the marker again for full details" : "Click marker for details"
+        touchLike ? t[lang].map.previewTapAgain : t[lang].map.previewClickDetails
       }</div>
     </div>
   `;

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Shop, ServiceKey, Services } from "../types";
 import type { Session } from "../repos/auth/types";
 import { SERVICE_META } from "../constants/serviceMeta";
+import AdminLocationPicker from "../components/AdminLocationPicker";
 
 const ALL_SERVICE_KEYS: ServiceKey[] = [
   "diaper_change",
@@ -15,6 +16,18 @@ const ALL_SERVICE_KEYS: ServiceKey[] = [
   "parking_bicycle",
   "hot_water",
 ];
+
+const SERVICE_LABEL_JA: Record<ServiceKey, string> = {
+  diaper_change: "おむつ交換スペース",
+  diaper_trash: "おむつ廃棄（ゴミ箱）",
+  kids_toilet: "子ども用トイレ",
+  nursing_room: "授乳スペース",
+  stroller_access: "ベビーカー入店可",
+  kids_chair_tableware: "子ども用椅子・食器",
+  parking_car: "駐車場",
+  parking_bicycle: "駐輪場",
+  hot_water: "お湯（ミルク用）",
+};
 
 function emptyServices(): Services {
   return {
@@ -141,13 +154,17 @@ export default function AdminPage({ session }: { session: Session }) {
   const save = async () => {
     if (!editing) return;
 
-    if (!editing.name.trim()) return setErr("Name is required");
+    if (!editing.name.trim()) {
+      return setErr("Name is required");
+    }
+
     if (!Number.isFinite(editing.lat) || !Number.isFinite(editing.lng)) {
       return setErr("lat/lng invalid");
     }
 
     setSaving(true);
     setErr(null);
+
     try {
       if (!editing.id) {
         const payload = toApiPayload({ ...editing, id: undefined as any });
@@ -180,7 +197,10 @@ export default function AdminPage({ session }: { session: Session }) {
     if (!editing) return;
     setEditing({
       ...editing,
-      services: { ...editing.services, [k]: !editing.services[k] },
+      services: {
+        ...editing.services,
+        [k]: !editing.services[k],
+      },
     });
   };
 
@@ -212,7 +232,10 @@ export default function AdminPage({ session }: { session: Session }) {
         }),
       });
 
-      if (!presignRes.ok) throw new Error(`Presign failed: HTTP ${presignRes.status}`);
+      if (!presignRes.ok) {
+        throw new Error(`Presign failed: HTTP ${presignRes.status}`);
+      }
+
       const presignData = await presignRes.json();
 
       const uploadRes = await fetch(presignData.uploadUrl, {
@@ -223,7 +246,9 @@ export default function AdminPage({ session }: { session: Session }) {
         body: file,
       });
 
-      if (!uploadRes.ok) throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
+      if (!uploadRes.ok) {
+        throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
+      }
 
       setEditing((prev: Shop | null) =>
         prev
@@ -397,8 +422,15 @@ export default function AdminPage({ session }: { session: Session }) {
               <div style={lab}>Lat</div>
               <input
                 style={input}
+                type="number"
+                step="0.000001"
                 value={String(editing.lat)}
-                onChange={(e) => setEditing({ ...editing, lat: Number(e.target.value) })}
+                onChange={(e) =>
+                  setEditing({
+                    ...editing,
+                    lat: Number(e.target.value),
+                  })
+                }
               />
             </label>
 
@@ -406,10 +438,33 @@ export default function AdminPage({ session }: { session: Session }) {
               <div style={lab}>Lng</div>
               <input
                 style={input}
+                type="number"
+                step="0.000001"
                 value={String(editing.lng)}
-                onChange={(e) => setEditing({ ...editing, lng: Number(e.target.value) })}
+                onChange={(e) =>
+                  setEditing({
+                    ...editing,
+                    lng: Number(e.target.value),
+                  })
+                }
               />
             </label>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <AdminLocationPicker
+                lat={editing.lat}
+                lng={editing.lng}
+                address={editing.address ?? ""}
+                onPick={({ lat, lng, address }) => {
+                  setEditing({
+                    ...editing,
+                    lat,
+                    lng,
+                    address: address ?? editing.address,
+                  });
+                }}
+              />
+            </div>
 
             <label style={{ ...field, gridColumn: "1 / -1" }}>
               <div style={lab}>Note</div>
@@ -478,14 +533,18 @@ export default function AdminPage({ session }: { session: Session }) {
                   style={chip(active)}
                 >
                   <span style={{ marginRight: 6 }}>{SERVICE_META[k].emoji}</span>
-                  {k}
+                  {SERVICE_LABEL_JA[k]}
                 </button>
               );
             })}
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-            <button onClick={() => setEditing(null)} style={btnGhost} disabled={saving || uploading}>
+            <button
+              onClick={() => setEditing(null)}
+              style={btnGhost}
+              disabled={saving || uploading}
+            >
               Cancel
             </button>
             <button onClick={save} style={btnPrimary} disabled={saving || uploading}>
@@ -504,8 +563,16 @@ const grid2: React.CSSProperties = {
   gap: 10,
 };
 
-const field: React.CSSProperties = { display: "grid", gap: 6 };
-const lab: React.CSSProperties = { fontSize: 12, color: "#6b7280", fontWeight: 800 };
+const field: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+};
+
+const lab: React.CSSProperties = {
+  fontSize: 12,
+  color: "#6b7280",
+  fontWeight: 800,
+};
 
 const input: React.CSSProperties = {
   border: "1px solid #e5e7eb",
