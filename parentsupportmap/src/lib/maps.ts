@@ -7,9 +7,10 @@ function getMapsApiKey(): string {
 }
 
 /**
- * Loads Google Maps JS API using the recommended new API (importLibrary).
- * - No deprecated Loader class
- * - Works with Vite
+ * Loads Google Maps JS API
+ * - Vite friendly
+ * - Adds loading=async to match best practice warning
+ * - Does NOT require mapId (so classic Marker works fine)
  */
 export async function loadGoogleMaps(): Promise<void> {
   if (typeof window === "undefined") return;
@@ -19,22 +20,23 @@ export async function loadGoogleMaps(): Promise<void> {
     loadingPromise = new Promise<void>((resolve, reject) => {
       const key = getMapsApiKey();
 
-      // If script already exists, reuse it.
       const existing = document.querySelector<HTMLScriptElement>('script[data-google-maps="true"]');
       if (existing) {
+        // 如果已经在加载了，挂上事件即可
         existing.addEventListener("load", () => resolve());
         existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps script")));
         return;
       }
 
-      // Create script tag
       const script = document.createElement("script");
       script.dataset.googleMaps = "true";
       script.async = true;
       script.defer = true;
 
-      // IMPORTANT: do not set libraries=... here; we'll use importLibrary()
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
+      // ✅ 加 loading=async，消掉性能提示 warning
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+        key
+      )}&v=weekly&loading=async`;
 
       script.onload = () => resolve();
       script.onerror = () => reject(new Error("Failed to load Google Maps script"));

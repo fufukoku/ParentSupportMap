@@ -8,26 +8,23 @@ export type Session = {
 
 export type RegisterInput = {
   email: string;
-  userId: string;
   password: string;
 };
 
 export type LoginInput = {
-  // 允许用 email 或 userId 登录
   identifier: string;
   password: string;
 };
 
-export type AuthUserRecord = {
+export type ConfirmSignUpInput = {
   email: string;
-  userId: string;
-  password: string; // demo: 明文（以后接后端换成hash）
-  role: Role;
+  code: string;
 };
 
 export type AuthRepo = {
-  getSession(): Session | null;
-  login(input: LoginInput): Session;
-  logout(): void;
-  register(input: RegisterInput): Session;
+  getSession(): Promise<Session | null>;
+  login(input: LoginInput): Promise<Session>;
+  logout(): Promise<void>;
+  register(input: RegisterInput): Promise<{ email: string }>;
+  confirmSignUp(input: ConfirmSignUpInput): Promise<void>;
 };

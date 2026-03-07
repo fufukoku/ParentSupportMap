@@ -1,8 +1,8 @@
-// src/pages/AdminPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Shop, ServiceKey, Services } from "../types";
 import type { Session } from "../repos/auth/types";
+import { SERVICE_META } from "../constants/serviceMeta";
 
 const ALL_SERVICE_KEYS: ServiceKey[] = [
   "diaper_change",
@@ -37,7 +37,6 @@ function apiBase(): string {
   );
 }
 
-// 后端: services 是 string[]
 function fromApiItem(a: any): Shop {
   const servicesBool = emptyServices();
   const arr: string[] = Array.isArray(a?.services) ? a.services : [];
@@ -55,7 +54,6 @@ function fromApiItem(a: any): Shop {
   };
 }
 
-// 前端: services 是 bool map -> 后端 string[]
 function toApiPayload(s: Shop) {
   const servicesArr = ALL_SERVICE_KEYS.filter((k) => Boolean(s.services?.[k]));
   return {
@@ -76,6 +74,7 @@ function toApiPayload(s: Shop) {
 export default function AdminPage({ session }: { session: Session }) {
   const nav = useNavigate();
   const API = useMemo(() => apiBase(), []);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [items, setItems] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,6 +82,7 @@ export default function AdminPage({ session }: { session: Session }) {
 
   const [editing, setEditing] = useState<Shop | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
@@ -101,7 +101,6 @@ export default function AdminPage({ session }: { session: Session }) {
   };
 
   useEffect(() => {
-    // 只允许 admin
     if (session.role !== "admin") {
       nav("/login", { replace: true });
       return;
@@ -112,7 +111,7 @@ export default function AdminPage({ session }: { session: Session }) {
 
   const startAdd = () => {
     setEditing({
-      id: "", // 后端会生成 shopId
+      id: "",
       name: "",
       lat: 35.6762,
       lng: 139.6503,
@@ -142,15 +141,15 @@ export default function AdminPage({ session }: { session: Session }) {
   const save = async () => {
     if (!editing) return;
 
-    // basic validate
     if (!editing.name.trim()) return setErr("Name is required");
-    if (!Number.isFinite(editing.lat) || !Number.isFinite(editing.lng)) return setErr("lat/lng invalid");
+    if (!Number.isFinite(editing.lat) || !Number.isFinite(editing.lng)) {
+      return setErr("lat/lng invalid");
+    }
 
     setSaving(true);
     setErr(null);
     try {
       if (!editing.id) {
-        // CREATE
         const payload = toApiPayload({ ...editing, id: undefined as any });
         const res = await fetch(`${API}/shops`, {
           method: "POST",
@@ -159,7 +158,6 @@ export default function AdminPage({ session }: { session: Session }) {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } else {
-        // UPDATE
         const payload = toApiPayload(editing);
         const res = await fetch(`${API}/shops/${encodeURIComponent(editing.id)}`, {
           method: "PUT",
@@ -186,99 +184,312 @@ export default function AdminPage({ session }: { session: Session }) {
     });
   };
 
+  const uploadImage = async (file: File) => {
+    if (!editing) return;
+
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowed.includes(file.type)) {
+      setErr("Only JPG / PNG / WEBP / GIF are supported");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErr("Image must be 5MB or smaller");
+      return;
+    }
+
+    setUploading(true);
+    setErr(null);
+
+    try {
+      const presignRes = await fetch(`${API}/uploads/presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          folder: "shops",
+        }),
+      });
+
+      if (!presignRes.ok) throw new Error(`Presign failed: HTTP ${presignRes.status}`);
+      const presignData = await presignRes.json();
+
+      const uploadRes = await fetch(presignData.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
+
+      setEditing((prev: Shop | null) =>
+        prev
+          ? {
+              ...prev,
+              photos: [...(prev.photos ?? []), presignData.publicUrl],
+            }
+          : prev
+      );
+    } catch (e: any) {
+      setErr(e?.message || "Image upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    if (!editing) return;
+    const next = [...(editing.photos ?? [])];
+    next.splice(index, 1);
+    setEditing({ ...editing, photos: next });
+  };
+
   return (
-    <div style={{ padding: 16, maxWidth: 980, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+    <div style={{ padding: 16, maxWidth: 1080, margin: "0 auto" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>Admin</div>
+          <div style={{ fontSize: 20, fontWeight: 900 }}>Admin</div>
           <div style={{ fontSize: 12, color: "#6b7280" }}>API: {API}</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => nav("/")} style={btnGhost}>Back</button>
-          <button onClick={refresh} style={btnGhost} disabled={loading}>Refresh</button>
-          <button onClick={startAdd} style={btnPrimary}>Add shop</button>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => nav("/")} style={btnGhost}>
+            Back
+          </button>
+          <button onClick={refresh} style={btnGhost} disabled={loading}>
+            Refresh
+          </button>
+          <button onClick={startAdd} style={btnPrimary}>
+            Add shop
+          </button>
         </div>
       </div>
 
       {err ? (
-        <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, border: "1px solid #fee2e2", background: "#fef2f2", color: "#b91c1c" }}>
+        <div
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #fee2e2",
+            background: "#fef2f2",
+            color: "#b91c1c",
+          }}
+        >
           {err}
         </div>
       ) : null}
 
-      <div style={{ marginTop: 12, border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden", background: "white" }}>
+      <div
+        style={{
+          marginTop: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "white",
+        }}
+      >
         <div style={{ padding: 12, borderBottom: "1px solid #eef0f6", fontWeight: 900 }}>
           Shops ({items.length})
         </div>
 
         {loading ? <div style={{ padding: 12, color: "#6b7280" }}>Loading…</div> : null}
-
-        {!loading && items.length === 0 ? <div style={{ padding: 12, color: "#6b7280" }}>No shops</div> : null}
+        {!loading && items.length === 0 ? (
+          <div style={{ padding: 12, color: "#6b7280" }}>No shops</div>
+        ) : null}
 
         {items.map((s) => (
-          <div key={s.id} style={{ padding: 12, borderTop: "1px solid #eef0f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>{s.id} · {s.address ?? ""}</div>
+          <div
+            key={s.id}
+            style={{
+              padding: 12,
+              borderTop: "1px solid #eef0f6",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={listThumbWrap}>
+                {s.photos?.[0] ? (
+                  <img src={s.photos[0]} alt={s.name} style={listThumb} />
+                ) : (
+                  <div style={listThumbEmpty}>📍</div>
+                )}
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {s.name}
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  {s.id} · {s.address ?? ""}
+                </div>
+              </div>
             </div>
+
             <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
-              <button onClick={() => startEdit(s)} style={btnGhost}>Edit</button>
-              <button onClick={() => del(s)} style={btnDanger}>Delete</button>
+              <button onClick={() => startEdit(s)} style={btnGhost}>
+                Edit
+              </button>
+              <button onClick={() => del(s)} style={btnDanger}>
+                Delete
+              </button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* editor */}
       {editing ? (
-        <div style={{ marginTop: 16, border: "1px solid #e5e7eb", borderRadius: 16, background: "white", padding: 12 }}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>
+        <div
+          style={{
+            marginTop: 16,
+            border: "1px solid #e5e7eb",
+            borderRadius: 16,
+            background: "white",
+            padding: 14,
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: 12, fontSize: 16 }}>
             {editing.id ? "Edit shop" : "Add shop"}
           </div>
 
           <div style={grid2}>
             <label style={field}>
               <div style={lab}>Name (JA)</div>
-              <input style={input} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              <input
+                style={input}
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+              />
             </label>
 
             <label style={field}>
               <div style={lab}>Address</div>
-              <input style={input} value={editing.address ?? ""} onChange={(e) => setEditing({ ...editing, address: e.target.value })} />
+              <input
+                style={input}
+                value={editing.address ?? ""}
+                onChange={(e) => setEditing({ ...editing, address: e.target.value })}
+              />
             </label>
 
             <label style={field}>
               <div style={lab}>Lat</div>
-              <input style={input} value={String(editing.lat)} onChange={(e) => setEditing({ ...editing, lat: Number(e.target.value) })} />
+              <input
+                style={input}
+                value={String(editing.lat)}
+                onChange={(e) => setEditing({ ...editing, lat: Number(e.target.value) })}
+              />
             </label>
 
             <label style={field}>
               <div style={lab}>Lng</div>
-              <input style={input} value={String(editing.lng)} onChange={(e) => setEditing({ ...editing, lng: Number(e.target.value) })} />
+              <input
+                style={input}
+                value={String(editing.lng)}
+                onChange={(e) => setEditing({ ...editing, lng: Number(e.target.value) })}
+              />
             </label>
 
             <label style={{ ...field, gridColumn: "1 / -1" }}>
               <div style={lab}>Note</div>
-              <textarea style={{ ...input, minHeight: 80 }} value={editing.note ?? ""} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />
+              <textarea
+                style={{ ...input, minHeight: 88, resize: "vertical" }}
+                value={editing.note ?? ""}
+                onChange={(e) => setEditing({ ...editing, note: e.target.value })}
+              />
             </label>
           </div>
 
-          <div style={{ marginTop: 12, fontWeight: 900 }}>Services</div>
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Images</div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                style={btnPrimary}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? "Uploading..." : "Upload image"}
+              </button>
+
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                JPG / PNG / WEBP / GIF, up to 5MB
+              </div>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadImage(file);
+              }}
+            />
+
+            <div style={photoGrid}>
+              {(editing.photos ?? []).map((url: string, idx: number) => (
+                <div key={`${url}-${idx}`} style={photoCard}>
+                  <img src={url} alt={`shop-${idx + 1}`} style={photoImg} />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(idx)}
+                    style={removePhotoBtn}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, fontWeight: 900 }}>Services</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
             {ALL_SERVICE_KEYS.map((k) => {
               const active = Boolean(editing.services?.[k]);
               return (
-                <button key={k} type="button" onClick={() => toggleSvc(k)} style={chip(active)}>
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => toggleSvc(k)}
+                  style={chip(active)}
+                >
+                  <span style={{ marginRight: 6 }}>{SERVICE_META[k].emoji}</span>
                   {k}
                 </button>
               );
             })}
           </div>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-            <button onClick={() => setEditing(null)} style={btnGhost} disabled={saving}>Cancel</button>
-            <button onClick={save} style={btnPrimary} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
+          <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+            <button onClick={() => setEditing(null)} style={btnGhost} disabled={saving || uploading}>
+              Cancel
+            </button>
+            <button onClick={save} style={btnPrimary} disabled={saving || uploading}>
+              {saving ? "Saving..." : "Save"}
             </button>
           </div>
         </div>
@@ -337,7 +548,64 @@ const chip = (active: boolean): React.CSSProperties => ({
   background: active ? "#eff6ff" : "white",
   color: "#111827",
   borderRadius: 999,
-  padding: "8px 10px",
+  padding: "8px 12px",
   cursor: "pointer",
   fontWeight: 800,
 });
+
+const photoGrid: React.CSSProperties = {
+  marginTop: 12,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+  gap: 10,
+};
+
+const photoCard: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  overflow: "hidden",
+  background: "white",
+};
+
+const photoImg: React.CSSProperties = {
+  width: "100%",
+  height: 120,
+  objectFit: "cover",
+  display: "block",
+};
+
+const removePhotoBtn: React.CSSProperties = {
+  width: "100%",
+  border: "none",
+  borderTop: "1px solid #e5e7eb",
+  background: "#fff",
+  color: "#b91c1c",
+  padding: "10px 12px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const listThumbWrap: React.CSSProperties = {
+  width: 52,
+  height: 52,
+  borderRadius: 12,
+  overflow: "hidden",
+  border: "1px solid #e5e7eb",
+  background: "#f9fafb",
+  flex: "0 0 auto",
+};
+
+const listThumb: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const listThumbEmpty: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};

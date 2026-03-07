@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { Lang } from "../i18n";
 import { t } from "../i18n";
 import type { Shop } from "../types";
+import { SERVICE_META } from "../constants/serviceMeta";
 
 type ShopServices = Shop["services"];
 
@@ -12,7 +13,6 @@ export default function ServiceBadges({
   lang: Lang;
   services: ShopServices;
 }) {
-  // ✅ snake_case keys
   const items = [
     { key: "diaper_change", ok: services.diaper_change, label: t[lang].services.diaper_change },
     { key: "diaper_trash", ok: services.diaper_trash, label: t[lang].services.diaper_trash },
@@ -28,15 +28,18 @@ export default function ServiceBadges({
   return (
     <div style={grid}>
       {items.map((it) => (
-        <div key={it.key} style={card}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <div style={icon(it.ok)} aria-hidden>
-              {it.ok ? "✓" : "✕"}
+        <div key={it.key} style={card(it.ok)}>
+          <div style={row}>
+            <div style={iconWrap(it.ok)} aria-hidden>
+              <span style={emoji}>{SERVICE_META[it.key].emoji}</span>
             </div>
-            <div style={{ minWidth: 0 }}>
+
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={label}>{it.label}</div>
               <div style={sub(it.ok)}>{it.ok ? t[lang].yes : t[lang].no}</div>
             </div>
+
+            <div style={status(it.ok)}>{it.ok ? "✓" : "—"}</div>
           </div>
         </div>
       ))}
@@ -50,38 +53,55 @@ const grid: CSSProperties = {
   gap: 10,
 };
 
-const card: CSSProperties = {
-  border: "1px solid #eef0f6",
-  borderRadius: 14,
+const card = (ok: boolean): CSSProperties => ({
+  border: "1px solid " + (ok ? "#dbeafe" : "#eef0f6"),
+  borderRadius: 16,
   padding: 12,
-  background: "white",
+  background: ok ? "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)" : "white",
+  boxShadow: ok ? "0 8px 20px rgba(37,99,235,0.06)" : "none",
+});
+
+const row: CSSProperties = {
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
 };
 
-const icon = (ok: boolean): CSSProperties => ({
-  width: 34,
-  height: 34,
-  borderRadius: 12,
+const iconWrap = (ok: boolean): CSSProperties => ({
+  width: 40,
+  height: 40,
+  borderRadius: 14,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontWeight: 900,
-  border: "1px solid " + (ok ? "#d1fae5" : "#fee2e2"),
-  background: ok ? "#ecfdf5" : "#fff1f2",
-  color: ok ? "#065f46" : "#9f1239",
+  background: ok ? "#eff6ff" : "#f9fafb",
+  border: "1px solid " + (ok ? "#bfdbfe" : "#e5e7eb"),
   flex: "0 0 auto",
 });
+
+const emoji: CSSProperties = {
+  fontSize: 18,
+  lineHeight: 1,
+};
 
 const label: CSSProperties = {
   fontSize: 13,
   fontWeight: 900,
   color: "#111827",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
+  lineHeight: 1.35,
 };
 
 const sub = (ok: boolean): CSSProperties => ({
   marginTop: 4,
   fontSize: 12,
-  color: ok ? "#065f46" : "#9ca3af",
+  color: ok ? "#2563eb" : "#9ca3af",
+  fontWeight: 700,
+});
+
+const status = (ok: boolean): CSSProperties => ({
+  marginLeft: "auto",
+  fontSize: 14,
+  fontWeight: 900,
+  color: ok ? "#2563eb" : "#d1d5db",
+  flex: "0 0 auto",
 });

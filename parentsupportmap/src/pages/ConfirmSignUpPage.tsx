@@ -1,17 +1,17 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { AuthRepo } from "../repos/auth/types";
 
-export default function LoginPage({
+export default function ConfirmSignUpPage({
   auth,
-  onLoggedIn,
 }: {
   auth: AuthRepo;
-  onLoggedIn: () => Promise<void> | void;
 }) {
   const nav = useNavigate();
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
+  const [params] = useSearchParams();
+
+  const [email, setEmail] = useState(params.get("email") ?? "");
+  const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -20,11 +20,13 @@ export default function LoginPage({
     setErr(null);
     setBusy(true);
     try {
-      await auth.login({ identifier: identifier.trim(), password });
-      await onLoggedIn();
-      nav("/", { replace: true });
+      await auth.confirmSignUp({
+        email: email.trim(),
+        code: code.trim(),
+      });
+      nav("/login", { replace: true });
     } catch (ex: any) {
-      setErr(ex?.message ?? "Login failed");
+      setErr(ex?.message ?? "Confirmation failed");
     } finally {
       setBusy(false);
     }
@@ -33,36 +35,35 @@ export default function LoginPage({
   return (
     <div style={wrap}>
       <div style={card}>
-        <div style={title}>Login</div>
+        <div style={title}>Verify your email</div>
+        <div style={sub}>
+          Enter the verification code sent to your email address.
+        </div>
 
-        <form onSubmit={submit} style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <form onSubmit={submit} style={{ display: "grid", gap: 10, marginTop: 14 }}>
           <input
             style={input}
             placeholder="Email"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
+
           <input
             style={input}
-            placeholder="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Verification code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
           />
 
           {err ? <div style={errStyle}>{err}</div> : null}
 
           <button style={btn} disabled={busy}>
-            {busy ? "Logging in..." : "Login"}
+            {busy ? "Verifying..." : "Verify"}
           </button>
         </form>
 
         <div style={foot}>
-          No account? <Link to="/register">Register</Link>
-        </div>
-
-        <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-          Need email verification? <Link to="/confirm-signup">Confirm here</Link>
+          Already verified? <Link to="/login">Go to login</Link>
         </div>
       </div>
     </div>
@@ -87,7 +88,17 @@ const card: React.CSSProperties = {
   boxShadow: "0 18px 50px rgba(0,0,0,0.08)",
 };
 
-const title: React.CSSProperties = { fontSize: 18, fontWeight: 900 };
+const title: React.CSSProperties = {
+  fontSize: 20,
+  fontWeight: 900,
+};
+
+const sub: React.CSSProperties = {
+  marginTop: 8,
+  fontSize: 13,
+  color: "#6b7280",
+  lineHeight: 1.5,
+};
 
 const input: React.CSSProperties = {
   border: "1px solid #e5e7eb",
@@ -115,4 +126,8 @@ const errStyle: React.CSSProperties = {
   borderRadius: 12,
 };
 
-const foot: React.CSSProperties = { marginTop: 12, fontSize: 13, color: "#374151" };
+const foot: React.CSSProperties = {
+  marginTop: 12,
+  fontSize: 13,
+  color: "#374151",
+};

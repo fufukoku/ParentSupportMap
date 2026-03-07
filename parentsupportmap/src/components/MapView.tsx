@@ -1,24 +1,43 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Shop } from "../types";
+import type { Shop, ServiceKey } from "../types";
 import { loadGoogleMaps } from "../lib/maps";
+import { SERVICE_META } from "../constants/serviceMeta";
 
 type Props = {
   shops: Shop[];
   onSelect: (shop: Shop) => void;
 };
 
+const TOP_SERVICE_KEYS: ServiceKey[] = [
+  "diaper_change",
+  "nursing_room",
+  "stroller_access",
+  "kids_toilet",
+  "hot_water",
+];
+
 export default function MapView({ shops, onSelect }: Props) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
-
-  // ✅ "我的位置" marker（用经典 Marker，不依赖 mapId）
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const meMarkerRef = useRef<google.maps.Marker | null>(null);
 
   const [locating, setLocating] = useState(false);
   const [locErr, setLocErr] = useState<string | null>(null);
+  const [isTouchLike, setIsTouchLike] = useState(false);
+
+  const previewOpenedShopIdRef = useRef<string | null>(null);
 
   const center = useMemo(() => ({ lat: 35.6762, lng: 139.6503 }), []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: none), (pointer: coarse)");
+    const update = () => setIsTouchLike(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,18 +50,23 @@ export default function MapView({ shops, onSelect }: Props) {
       if (!mapRef.current) {
         mapRef.current = new google.maps.Map(mapDivRef.current, {
           center,
-          zoom: 12,
+          zoom: 8,
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: true,
         });
       }
 
+      if (!infoWindowRef.current) {
+        infoWindowRef.current = new google.maps.InfoWindow();
+      }
+
       const map = mapRef.current;
+      const infoWindow = infoWindowRef.current;
       const nextKeys = new Set<string>();
 
       for (const s of shops) {
-        const key = (s as any).id ? String((s as any).id) : `${s.name}-${s.lat}-${s.lng}`;
+        const key = s.id ? String(s.id) : `${s.name}-${s.lat}-${s.lng}`;
         nextKeys.add(key);
 
         let marker = markersRef.current.get(key);
@@ -51,8 +75,50 @@ export default function MapView({ shops, onSelect }: Props) {
             map,
             position: { lat: s.lat, lng: s.lng },
             title: s.name,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: "#2563eb",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 3,
+            },
           });
-          marker.addListener("click", () => onSelect(s));
+
+          marker.addListener("click", () => {
+            if (isTouchLike) {
+              const samePreview = previewOpenedShopIdRef.current === s.id;
+              if (samePreview) {
+                previewOpenedShopIdRef.current = null;
+                infoWindow.close();
+                onSelect(s);
+                return;
+              }
+
+              previewOpenedShopIdRef.current = s.id;
+              infoWindow.setContent(buildPreviewHtml(s, true));
+              infoWindow.open({ map, anchor: marker! });
+              return;
+            }
+
+            onSelect(s);
+            infoWindow.setContent(buildPreviewHtml(s, false));
+            infoWindow.open({ map, anchor: marker! });
+          });
+
+          marker.addListener("mouseover", () => {
+            if (isTouchLike) return;
+            infoWindow.setContent(buildPreviewHtml(s, false));
+            infoWindow.open({ map, anchor: marker! });
+          });
+
+          marker.addListener("mouseout", () => {
+            if (isTouchLike) return;
+            setTimeout(() => {
+              infoWindow.close();
+            }, 120);
+          });
+
           markersRef.current.set(key, marker);
         } else {
           marker.setPosition({ lat: s.lat, lng: s.lng });
@@ -72,9 +138,8 @@ export default function MapView({ shops, onSelect }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [shops, onSelect, center]);
+  }, [shops, onSelect, center, isTouchLike]);
 
-  // ✅ 点击定位
   const locateMe = async () => {
     setLocErr(null);
     setLocating(true);
@@ -100,11 +165,9 @@ export default function MapView({ shops, onSelect }: Props) {
       const lng = pos.coords.longitude;
       const p = { lat, lng };
 
-      // 移动视角
       map.panTo(p);
       map.setZoom(Math.max(map.getZoom() ?? 12, 16));
 
-      // 放/更新我的 marker
       if (!meMarkerRef.current) {
         meMarkerRef.current = new google.maps.Marker({
           map,
@@ -113,7 +176,7 @@ export default function MapView({ shops, onSelect }: Props) {
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 8,
-            fillColor: "#2563eb",
+            fillColor: "#111827",
             fillOpacity: 1,
             strokeColor: "#ffffff",
             strokeWeight: 3,
@@ -125,7 +188,6 @@ export default function MapView({ shops, onSelect }: Props) {
         meMarkerRef.current.setMap(map);
       }
     } catch (e: any) {
-      // 常见权限/超时错误提示
       const msg =
         e?.code === 1
           ? "Location permission denied. Please allow location access in the browser."
@@ -154,8 +216,17 @@ export default function MapView({ shops, onSelect }: Props) {
         }}
       />
 
-      {/* ✅ 左下角定位按钮 */}
-      <div style={{ position: "absolute", left: 12, bottom: 12, zIndex: 5, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 12,
+          bottom: 12,
+          zIndex: 5,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
         <button
           type="button"
           onClick={locateMe}
@@ -200,4 +271,51 @@ export default function MapView({ shops, onSelect }: Props) {
       </div>
     </div>
   );
+}
+
+function buildPreviewHtml(shop: Shop, touchLike: boolean): string {
+  const services = TOP_SERVICE_KEYS.filter((k) => Boolean(shop.services?.[k])).slice(0, 2);
+
+  const chips = services
+    .map((k) => {
+      const emoji = SERVICE_META[k].emoji;
+      const label = k.replaceAll("_", " ");
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;font-size:11px;font-weight:700;color:#1d4ed8;">${emoji} ${escapeHtml(
+        label
+      )}</span>`;
+    })
+    .join(" ");
+
+  const img = shop.photos?.[0]
+    ? `<img src="${escapeAttr(shop.photos[0])}" alt="${escapeAttr(shop.name)}" style="width:100%;height:96px;object-fit:cover;display:block;border-radius:12px;" />`
+    : `<div style="width:100%;height:96px;border-radius:12px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:26px;">📍</div>`;
+
+  return `
+    <div style="width:220px;padding:4px 4px 2px 4px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">
+      ${img}
+      <div style="margin-top:10px;font-size:14px;font-weight:900;color:#111827;line-height:1.3;">${escapeHtml(shop.name)}</div>
+      ${
+        shop.address
+          ? `<div style="margin-top:4px;font-size:12px;color:#6b7280;line-height:1.4;">${escapeHtml(shop.address)}</div>`
+          : ""
+      }
+      ${chips ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>` : ""}
+      <div style="margin-top:8px;font-size:11px;color:#2563eb;font-weight:700;">${
+        touchLike ? "Tap the marker again for full details" : "Click marker for details"
+      }</div>
+    </div>
+  `;
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(input: string): string {
+  return escapeHtml(input);
 }

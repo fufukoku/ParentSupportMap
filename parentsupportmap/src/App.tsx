@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./App.css";
@@ -12,7 +11,7 @@ import ShopDrawer from "./components/ShopDrawer";
 import FilterPanel from "./components/FilterPanel";
 
 import type { Session } from "./repos/auth/types";
-import { localAuthRepo } from "./repos/auth/localAuthRepo";
+import { cognitoAuthRepo } from "./repos/auth/cognitoAuthRepo";
 
 const SERVICE_KEYS: ServiceKey[] = [
   "diaper_change",
@@ -38,12 +37,10 @@ export default function App({
   onSessionChanged,
 }: {
   session: Session | null;
-  onSessionChanged: () => void;
+  onSessionChanged: () => Promise<void> | void;
 }) {
   const [lang, setLang] = useState<Lang>("ja");
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
-
-  // ✅ 筛选状态
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<ServiceKey[]>([]);
 
@@ -55,8 +52,8 @@ export default function App({
   const [shopsLoading, setShopsLoading] = useState(false);
   const [shopsError, setShopsError] = useState<string | null>(null);
 
-  // ✅ 响应式：窄屏不做右侧栏
   const [isNarrow, setIsNarrow] = useState(false);
+
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 980px)");
     const update = () => setIsNarrow(mq.matches);
@@ -104,19 +101,18 @@ export default function App({
   }, [API_BASE]);
 
   const nav = useNavigate();
-  const auth = useMemo(() => localAuthRepo(), []);
+  const auth = useMemo(() => cognitoAuthRepo(), []);
 
   const filteredShops = useMemo(() => {
     if (selectedServices.length === 0) return shops;
     return shops.filter((s) => selectedServices.every((k) => Boolean(s.services?.[k])));
   }, [shops, selectedServices]);
 
-  const logout = () => {
-    auth.logout();
-    onSessionChanged();
+  const logout = async () => {
+    await auth.logout();
+    await onSessionChanged();
   };
 
-  // ✅ 关键：只有「桌面 + 选中店铺」才显示右侧栏，避免巨大空白
   const showSidePane = !isNarrow && !!selectedShop;
 
   return (
@@ -155,7 +151,8 @@ export default function App({
           ) : (
             <div style={styles.sessionBox}>
               <span style={styles.sessionText}>
-                {session.userId} ({session.role})
+                {session.email}
+                {session.role === "admin" ? " (admin)" : ""}
               </span>
 
               {session.role === "admin" ? (
@@ -201,7 +198,6 @@ export default function App({
           </div>
         </section>
 
-        {/* ✅ 只有需要时才渲染右侧栏 */}
         {showSidePane ? (
           <aside style={styles.sidePane}>
             <ShopDrawer lang={lang} shop={selectedShop} onClose={() => setSelectedShop(null)} />
@@ -209,7 +205,6 @@ export default function App({
         ) : null}
       </main>
 
-      {/* ✅ 窄屏：用 ShopDrawer 自己的 bottom sheet（不占右侧栏） */}
       {isNarrow ? (
         <ShopDrawer lang={lang} shop={selectedShop} onClose={() => setSelectedShop(null)} />
       ) : null}

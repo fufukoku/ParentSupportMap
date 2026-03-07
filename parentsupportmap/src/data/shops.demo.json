@@ -5,7 +5,7 @@
     "lat": 35.6586,
     "lng": 139.7454,
     "address": "Tokyo (Demo Address)",
-    "photos": ["/photos/demo1.jpg", "/photos/demo2.jpg"],
+    "photos": [],
     "services": {
       "diaper_change": true,
       "diaper_trash": false,
