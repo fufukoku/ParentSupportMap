@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  loadMapsLibrary,
-  loadMarkerLibrary,
+  getGoogleMapId,
   loadGeocodingLibrary,
+  loadMapsLibrary,
 } from "../lib/maps";
 
 type Props = {
@@ -24,6 +24,7 @@ export default function AdminLocationPicker({
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
 
   const [searching, setSearching] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [geoErr, setGeoErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,7 +32,6 @@ export default function AdminLocationPicker({
 
     (async () => {
       const { Map } = await loadMapsLibrary();
-      await loadMarkerLibrary();
       await loadGeocodingLibrary();
 
       if (cancelled) return;
@@ -48,6 +48,7 @@ export default function AdminLocationPicker({
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
+          mapId: getGoogleMapId(),
         });
 
         const marker = new google.maps.Marker({
@@ -57,24 +58,33 @@ export default function AdminLocationPicker({
           title: "Selected location",
         });
 
-        map.addListener("click", (e: google.maps.MapMouseEvent) => {
+        map.addListener("click", async (e: google.maps.MapMouseEvent) => {
           if (!e.latLng) return;
           const nextLat = e.latLng.lat();
           const nextLng = e.latLng.lng();
 
           marker.setPosition({ lat: nextLat, lng: nextLng });
+
+          const nextAddress = await reverseGeocode(nextLat, nextLng, geocoderRef.current);
           onPick({
             lat: nextLat,
             lng: nextLng,
+            address: nextAddress ?? address,
           });
         });
 
-        marker.addListener("dragend", () => {
+        marker.addListener("dragend", async () => {
           const pos = marker.getPosition();
           if (!pos) return;
+
+          const nextLat = pos.lat();
+          const nextLng = pos.lng();
+          const nextAddress = await reverseGeocode(nextLat, nextLng, geocoderRef.current);
+
           onPick({
-            lat: pos.lat(),
-            lng: pos.lng(),
+            lat: nextLat,
+            lng: nextLng,
+            address: nextAddress ?? address,
           });
         });
 
@@ -86,7 +96,7 @@ export default function AdminLocationPicker({
     return () => {
       cancelled = true;
     };
-  }, [onPick, lat, lng]);
+  }, [address, lat, lng, onPick]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -108,41 +118,81 @@ export default function AdminLocationPicker({
     setGeoErr(null);
 
     try {
-      await loadGeocodingLibrary();
+      const geocoder = geocoderRef.current ?? new google.maps.Geocoder();
+      geocoderRef.current = geocoder;
 
-      if (!geocoderRef.current) {
-        geocoderRef.current = new google.maps.Geocoder();
+      const result = await geocodeAddress(address.trim(), geocoder);
+
+      if (!result) {
+        setGeoErr("Address not found.");
+        return;
       }
 
-      geocoderRef.current.geocode(
-        { address: address.trim() },
-        (results, status) => {
-          setSearching(false);
+      const nextLat = result.geometry.location.lat();
+      const nextLng = result.geometry.location.lng();
 
-          if (status !== "OK" || !results || !results[0]) {
-            setGeoErr("Address not found.");
-            return;
-          }
+      markerRef.current?.setPosition({ lat: nextLat, lng: nextLng });
+      mapRef.current?.panTo({ lat: nextLat, lng: nextLng });
+      mapRef.current?.setZoom(16);
 
-          const first = results[0];
-          const loc = first.geometry.location;
-          const nextLat = loc.lat();
-          const nextLng = loc.lng();
-
-          markerRef.current?.setPosition({ lat: nextLat, lng: nextLng });
-          mapRef.current?.panTo({ lat: nextLat, lng: nextLng });
-          mapRef.current?.setZoom(16);
-
-          onPick({
-            lat: nextLat,
-            lng: nextLng,
-            address: first.formatted_address || address,
-          });
-        }
-      );
+      onPick({
+        lat: nextLat,
+        lng: nextLng,
+        address: result.formatted_address || address,
+      });
     } catch (e: any) {
-      setSearching(false);
       setGeoErr(e?.message || "Failed to search address.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const useCurrentLocation = async () => {
+    setLocating(true);
+    setGeoErr(null);
+
+    try {
+      if (!("geolocation" in navigator)) {
+        throw new Error("This browser does not support geolocation.");
+      }
+
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 0,
+        });
+      });
+
+      const nextLat = pos.coords.latitude;
+      const nextLng = pos.coords.longitude;
+      const nextAddress = await reverseGeocode(
+        nextLat,
+        nextLng,
+        geocoderRef.current ?? new google.maps.Geocoder()
+      );
+
+      markerRef.current?.setPosition({ lat: nextLat, lng: nextLng });
+      mapRef.current?.panTo({ lat: nextLat, lng: nextLng });
+      mapRef.current?.setZoom(16);
+
+      onPick({
+        lat: nextLat,
+        lng: nextLng,
+        address: nextAddress ?? address,
+      });
+    } catch (e: any) {
+      const msg =
+        e?.code === 1
+          ? "Location permission denied."
+          : e?.code === 2
+          ? "Location unavailable."
+          : e?.code === 3
+          ? "Location request timed out."
+          : e?.message || "Failed to get current location.";
+      setGeoErr(msg);
+    } finally {
+      setLocating(false);
     }
   };
 
@@ -150,18 +200,30 @@ export default function AdminLocationPicker({
     <div style={wrap}>
       <div style={head}>
         <div style={{ fontWeight: 900 }}>Location</div>
-        <button
-          type="button"
-          onClick={searchAddress}
-          style={searchBtn}
-          disabled={searching}
-        >
-          {searching ? "Searching..." : "Search address"}
-        </button>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={useCurrentLocation}
+            style={ghostBtn}
+            disabled={locating}
+          >
+            {locating ? "Loading..." : "Use current location"}
+          </button>
+
+          <button
+            type="button"
+            onClick={searchAddress}
+            style={searchBtn}
+            disabled={searching}
+          >
+            {searching ? "Searching..." : "Search address"}
+          </button>
+        </div>
       </div>
 
       <div style={hint}>
-        Search by address, or click / drag on the map to set the location.
+        Search by address, use current location, or click / drag on the map to set the location.
       </div>
 
       {geoErr ? <div style={errStyle}>{geoErr}</div> : null}
@@ -180,6 +242,39 @@ export default function AdminLocationPicker({
       />
     </div>
   );
+}
+
+async function geocodeAddress(
+  address: string,
+  geocoder: google.maps.Geocoder
+): Promise<google.maps.GeocoderResult | null> {
+  return await new Promise((resolve) => {
+    geocoder.geocode({ address }, (results, status) => {
+      if (status !== "OK" || !results || !results[0]) {
+        resolve(null);
+        return;
+      }
+      resolve(results[0]);
+    });
+  });
+}
+
+async function reverseGeocode(
+  lat: number,
+  lng: number,
+  geocoder: google.maps.Geocoder | null
+): Promise<string | undefined> {
+  if (!geocoder) return undefined;
+
+  return await new Promise((resolve) => {
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status !== "OK" || !results || !results[0]) {
+        resolve(undefined);
+        return;
+      }
+      resolve(results[0].formatted_address);
+    });
+  });
 }
 
 const wrap: React.CSSProperties = {
@@ -202,6 +297,16 @@ const hint: React.CSSProperties = {
   marginTop: 6,
   fontSize: 12,
   color: "#6b7280",
+};
+
+const ghostBtn: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  background: "white",
+  color: "#111827",
+  borderRadius: 12,
+  padding: "8px 10px",
+  cursor: "pointer",
+  fontWeight: 800,
 };
 
 const searchBtn: React.CSSProperties = {

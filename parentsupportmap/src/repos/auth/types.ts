@@ -6,13 +6,13 @@ export type Session = {
   role: Role;
 };
 
-export type RegisterInput = {
-  email: string;
+export type LoginInput = {
+  identifier: string;
   password: string;
 };
 
-export type LoginInput = {
-  identifier: string;
+export type RegisterInput = {
+  email: string;
   password: string;
 };
 
@@ -21,10 +21,10 @@ export type ConfirmSignUpInput = {
   code: string;
 };
 
-export type AuthRepo = {
+export interface AuthRepo {
   getSession(): Promise<Session | null>;
   login(input: LoginInput): Promise<Session>;
   logout(): Promise<void>;
   register(input: RegisterInput): Promise<{ email: string }>;
   confirmSignUp(input: ConfirmSignUpInput): Promise<void>;
-};
+}

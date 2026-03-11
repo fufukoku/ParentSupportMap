@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./App.css";
 
-import type { Shop, ServiceKey, Services } from "./types";
+import type {
+  Shop,
+  ServiceKey,
+  Services,
+  ShopCategory,
+} from "./types";
 import type { Lang } from "./i18n";
 import { t } from "./i18n";
 
@@ -12,6 +17,11 @@ import FilterPanel from "./components/FilterPanel";
 
 import type { Session } from "./repos/auth/types";
 import { cognitoAuthRepo } from "./repos/auth/cognitoAuthRepo";
+import {
+  SHOP_CATEGORY_OPTIONS,
+  SHOP_CATEGORY_META,
+  getShopCategoryLabel,
+} from "./constants/shopCategoryMeta";
 
 const LANG_KEY = "psm_lang";
 
@@ -34,6 +44,12 @@ function servicesFromArray(arr: any): Services {
   return out as Services;
 }
 
+function normalizeCategory(value: any): ShopCategory {
+  return SHOP_CATEGORY_OPTIONS.includes(value as ShopCategory)
+    ? (value as ShopCategory)
+    : "other";
+}
+
 export default function App({
   session,
   onSessionChanged,
@@ -49,6 +65,8 @@ export default function App({
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<ServiceKey[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<ShopCategory[]>([]);
 
   const API_BASE =
     (import.meta.env.VITE_API_BASE as string | undefined) ??
@@ -84,11 +102,20 @@ export default function App({
         const data = await res.json();
 
         const mapped = (data.items ?? []).map((a: any) => {
-          const name = lang === "ja" ? a.nameJa || a.nameEn || "Unnamed" : a.nameEn || a.nameJa || "Unnamed";
-          const note = lang === "ja" ? a.descriptionJa || a.descriptionEn || "" : a.descriptionEn || a.descriptionJa || "";
+          const name =
+            lang === "ja"
+              ? a.nameJa || a.nameEn || "Unnamed"
+              : a.nameEn || a.nameJa || "Unnamed";
+
+          const note =
+            lang === "ja"
+              ? a.descriptionJa || a.descriptionEn || ""
+              : a.descriptionEn || a.descriptionJa || "";
+
           return {
             id: a.shopId,
             name,
+            category: normalizeCategory(a.category),
             lat: Number(a.lat ?? 0),
             lng: Number(a.lng ?? 0),
             address: a.address ?? "",
@@ -114,10 +141,51 @@ export default function App({
   const nav = useNavigate();
   const auth = useMemo(() => cognitoAuthRepo(), []);
 
+  const toggleCategory = (category: ShopCategory) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category]
+    );
+  };
+
+  const clearAllFilters = () => {
+    setSearchText("");
+    setSelectedCategories([]);
+    setSelectedServices([]);
+    setSelectedShop(null);
+  };
+
   const filteredShops = useMemo(() => {
-    if (selectedServices.length === 0) return shops;
-    return shops.filter((s) => selectedServices.every((k) => Boolean(s.services?.[k])));
-  }, [shops, selectedServices]);
+    const keyword = searchText.trim().toLowerCase();
+
+    return shops.filter((s) => {
+      const serviceOk =
+        selectedServices.length === 0 ||
+        selectedServices.every((k) => Boolean(s.services?.[k]));
+
+      const categoryOk =
+        selectedCategories.length === 0 ||
+        selectedCategories.includes(s.category ?? "other");
+
+      const categoryLabel = getShopCategoryLabel(lang, s.category ?? "other").toLowerCase();
+
+      const searchOk =
+        !keyword ||
+        s.name.toLowerCase().includes(keyword) ||
+        (s.address ?? "").toLowerCase().includes(keyword) ||
+        (s.note ?? "").toLowerCase().includes(keyword) ||
+        categoryLabel.includes(keyword);
+
+      return serviceOk && categoryOk && searchOk;
+    });
+  }, [shops, selectedServices, selectedCategories, searchText, lang]);
+
+  useEffect(() => {
+    if (!selectedShop) return;
+    const visible = filteredShops.some((s) => s.id === selectedShop.id);
+    if (!visible) setSelectedShop(null);
+  }, [filteredShops, selectedShop]);
 
   const logout = async () => {
     await auth.logout();
@@ -126,23 +194,67 @@ export default function App({
 
   const showSidePane = !isNarrow && !!selectedShop;
 
+  const activeFilterCount =
+    selectedServices.length + selectedCategories.length + (searchText.trim() ? 1 : 0);
+
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
-        <div style={styles.headerTop}>
-          <div style={styles.brandBlock}>
+    <div
+      style={{
+        ...styles.page,
+        padding: isNarrow ? 8 : 12,
+      }}
+    >
+      <header
+        style={{
+          ...styles.header,
+          borderRadius: isNarrow ? 18 : 22,
+          padding: isNarrow ? "10px 10px 10px" : "14px 16px 12px",
+        }}
+      >
+        <div
+          style={{
+            ...styles.headerTop,
+            gap: isNarrow ? 10 : 12,
+          }}
+        >
+          <div style={{ minWidth: 0, flex: "1 1 auto" }}>
             <div style={styles.brandEyebrow}>PARENTSUPPORTMAP</div>
-            <div style={styles.title}>{t[lang].appTitle}</div>
-            <div style={styles.sub}>{t[lang].appSubtitle}</div>
+            <div
+              style={{
+                ...styles.title,
+                fontSize: isNarrow ? 18 : 22,
+                marginTop: 4,
+              }}
+            >
+              {t[lang].appTitle}
+            </div>
+            <div
+              style={{
+                ...styles.sub,
+                fontSize: isNarrow ? 12 : 13,
+                marginTop: 4,
+              }}
+            >
+              {t[lang].appSubtitle}
+            </div>
           </div>
 
-          <div style={styles.headerActions}>
+          <div
+            style={{
+              ...styles.headerActions,
+              width: isNarrow ? "100%" : undefined,
+              justifyContent: isNarrow ? "space-between" : "flex-end",
+            }}
+          >
             <div style={styles.langBox}>
               <span style={styles.langLabel}>{t[lang].language}</span>
               <select
                 value={lang}
                 onChange={(e) => setLang(e.target.value as Lang)}
-                style={styles.select}
+                style={{
+                  ...styles.select,
+                  padding: isNarrow ? "8px 10px" : "9px 12px",
+                }}
               >
                 <option value="ja">日本語</option>
                 <option value="en">English</option>
@@ -154,36 +266,122 @@ export default function App({
                 {t[lang].header.login}
               </button>
             ) : (
-              <div style={styles.sessionBox}>
-                <span style={styles.sessionText}>{session.email}</span>
+              <div
+                style={{
+                  ...styles.sessionBox,
+                  width: isNarrow ? "100%" : undefined,
+                  justifyContent: isNarrow ? "space-between" : "flex-end",
+                }}
+              >
+                <span
+                  style={{
+                    ...styles.sessionText,
+                    maxWidth: isNarrow ? 170 : 260,
+                  }}
+                  title={session.email}
+                >
+                  {session.email}
+                </span>
 
-                {session.role === "admin" ? (
-                  <button type="button" onClick={() => nav("/admin")} style={styles.authBtn}>
-                    {t[lang].header.admin}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {session.role === "admin" ? (
+                    <button type="button" onClick={() => nav("/admin")} style={styles.authBtn}>
+                      {lang === "ja" ? "管理" : "Admin"}
+                    </button>
+                  ) : null}
+
+                  <button type="button" onClick={logout} style={styles.authBtn}>
+                    {t[lang].header.logout}
                   </button>
-                ) : null}
-
-                <button type="button" onClick={logout} style={styles.authBtn}>
-                  {t[lang].header.logout}
-                </button>
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {!session ? <div style={styles.headerNote}>{t[lang].header.guestCta}</div> : null}
+        <div
+          style={{
+            ...styles.toolbar,
+            marginTop: isNarrow ? 10 : 12,
+            gap: isNarrow ? 8 : 10,
+          }}
+        >
+          <div
+            style={{
+              ...styles.searchWrap,
+              minWidth: isNarrow ? 0 : 260,
+              flex: isNarrow ? "1 1 100%" : "1 1 320px",
+            }}
+          >
+            <span style={styles.searchIcon}>⌕</span>
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder={
+                lang === "ja"
+                  ? "施設名・住所・タイプで検索"
+                  : "Search by name, address, or type"
+              }
+              style={styles.searchInput}
+            />
+          </div>
+
+          <div style={styles.resultPill}>
+            {lang === "ja" ? `${filteredShops.length}件表示中` : `${filteredShops.length} results`}
+          </div>
+
+          {activeFilterCount > 0 ? (
+            <button type="button" onClick={clearAllFilters} style={styles.clearBtn}>
+              {lang === "ja" ? "クリア" : "Clear"}
+            </button>
+          ) : null}
+        </div>
+
+        <div
+          style={{
+            ...styles.categoryRow,
+            marginTop: 10,
+          }}
+        >
+          {SHOP_CATEGORY_OPTIONS.map((category) => {
+            const active = selectedCategories.includes(category);
+            const meta = SHOP_CATEGORY_META[category];
+            const label = getShopCategoryLabel(lang, category);
+
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => toggleCategory(category)}
+                style={categoryChip(active)}
+              >
+                <span>{meta.emoji}</span>
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </div>
       </header>
 
       {shopsLoading ? <div style={styles.bannerInfo}>Loading places…</div> : null}
-      {shopsError ? <div style={styles.bannerError}>Failed to load places: {shopsError}</div> : null}
+      {shopsError ? (
+        <div style={styles.bannerError}>Failed to load places: {shopsError}</div>
+      ) : null}
 
       <main
         style={{
           ...styles.main,
+          marginTop: isNarrow ? 10 : 12,
+          minHeight: isNarrow ? "calc(100vh - 144px)" : "calc(100vh - 170px)",
           gridTemplateColumns: showSidePane ? "1fr 420px" : "1fr",
         }}
       >
-        <section style={styles.mapPane}>
+        <section
+          style={{
+            ...styles.mapPane,
+            borderRadius: isNarrow ? 18 : 22,
+          }}
+        >
           <div style={styles.mapWrap}>
             <MapView lang={lang} shops={filteredShops} onSelect={(s) => setSelectedShop(s)} />
 
@@ -204,7 +402,12 @@ export default function App({
         </section>
 
         {showSidePane ? (
-          <aside style={styles.sidePane}>
+          <aside
+            style={{
+              ...styles.sidePane,
+              borderRadius: isNarrow ? 18 : 22,
+            }}
+          >
             <ShopDrawer lang={lang} shop={selectedShop} onClose={() => setSelectedShop(null)} />
           </aside>
         ) : null}
@@ -217,74 +420,67 @@ export default function App({
   );
 }
 
+const categoryChip = (active: boolean): React.CSSProperties => ({
+  border: "1px solid " + (active ? "#bfdbfe" : "#e2e8f0"),
+  background: active ? "#eff6ff" : "white",
+  color: active ? "#1d4ed8" : "#334155",
+  borderRadius: 999,
+  padding: "8px 12px",
+  cursor: "pointer",
+  fontWeight: 800,
+  fontSize: 13,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
+  flex: "0 0 auto",
+});
+
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    padding: 12,
     boxSizing: "border-box",
     background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
   },
 
   header: {
-    padding: "18px 20px 16px",
-    borderRadius: 24,
     border: "1px solid #e7e9f0",
-    background: "rgba(255,255,255,0.94)",
+    background: "rgba(255,255,255,0.96)",
     backdropFilter: "blur(8px)",
-    boxShadow: "0 18px 48px rgba(15,23,42,0.06)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.05)",
   },
 
   headerTop: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 16,
     flexWrap: "wrap",
   },
 
-  brandBlock: {
-    minWidth: 260,
-    flex: "1 1 auto",
-  },
-
   brandEyebrow: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 900,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     color: "#2563eb",
     textTransform: "uppercase",
   },
 
   title: {
-    marginTop: 8,
-    fontSize: 24,
     fontWeight: 900,
-    letterSpacing: 0.2,
+    lineHeight: 1.2,
     color: "#0f172a",
-    lineHeight: 1.15,
   },
 
   sub: {
-    marginTop: 8,
-    fontSize: 14,
     color: "#64748b",
-    lineHeight: 1.5,
-    maxWidth: 620,
+    lineHeight: 1.45,
   },
 
   headerActions: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-
-  headerNote: {
-    marginTop: 12,
-    fontSize: 13,
-    color: "#64748b",
-    lineHeight: 1.5,
   },
 
   langBox: {
@@ -302,7 +498,6 @@ const styles: Record<string, React.CSSProperties> = {
   select: {
     border: "1px solid #dbe1ea",
     borderRadius: 14,
-    padding: "10px 12px",
     background: "white",
     fontSize: 14,
     fontWeight: 700,
@@ -313,7 +508,6 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
-    justifyContent: "flex-end",
   },
 
   sessionText: {
@@ -323,7 +517,10 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#f8fafc",
     border: "1px solid #e2e8f0",
     borderRadius: 999,
-    padding: "10px 14px",
+    padding: "9px 12px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
 
   primaryBtn: {
@@ -331,9 +528,9 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#0f172a",
     color: "white",
     borderRadius: 14,
-    padding: "10px 14px",
+    padding: "9px 12px",
     cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(15,23,42,0.14)",
+    boxShadow: "0 8px 18px rgba(15,23,42,0.12)",
     fontWeight: 900,
     whiteSpace: "nowrap",
   },
@@ -342,25 +539,86 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #dbe1ea",
     background: "white",
     borderRadius: 14,
-    padding: "10px 14px",
+    padding: "9px 12px",
     cursor: "pointer",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.04)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
     fontWeight: 800,
     whiteSpace: "nowrap",
   },
 
+  toolbar: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+
+  searchWrap: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+  },
+
+  searchIcon: {
+    position: "absolute",
+    left: 12,
+    fontSize: 15,
+    color: "#94a3b8",
+    pointerEvents: "none",
+  },
+
+  searchInput: {
+    width: "100%",
+    border: "1px solid #dbe1ea",
+    borderRadius: 14,
+    padding: "10px 12px 10px 34px",
+    background: "white",
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+  },
+
+  resultPill: {
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc",
+    color: "#334155",
+    borderRadius: 999,
+    padding: "9px 12px",
+    fontSize: 13,
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+  },
+
+  clearBtn: {
+    border: "1px solid #dbe1ea",
+    background: "white",
+    color: "#334155",
+    borderRadius: 14,
+    padding: "9px 12px",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+  },
+
+  categoryRow: {
+    display: "flex",
+    gap: 8,
+    overflowX: "auto",
+    paddingBottom: 2,
+  },
+
   bannerInfo: {
-    marginTop: 12,
+    marginTop: 10,
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid #e7e9f0",
-    background: "rgba(255,255,255,0.9)",
+    background: "rgba(255,255,255,0.92)",
     color: "#64748b",
     fontSize: 12,
   },
 
   bannerError: {
-    marginTop: 12,
+    marginTop: 10,
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid #fee2e2",
@@ -370,20 +628,17 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   main: {
-    marginTop: 14,
-    minHeight: "calc(100vh - 145px)",
     display: "grid",
     gap: 12,
   },
 
   mapPane: {
-    borderRadius: 24,
     overflow: "hidden",
     border: "1px solid #e7e9f0",
     background: "white",
     minWidth: 0,
     minHeight: 0,
-    boxShadow: "0 18px 48px rgba(15,23,42,0.05)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.04)",
   },
 
   mapWrap: {
@@ -393,12 +648,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   sidePane: {
-    borderRadius: 24,
     overflow: "hidden",
     border: "1px solid #e7e9f0",
     background: "white",
     minWidth: 0,
     minHeight: 0,
-    boxShadow: "0 18px 48px rgba(15,23,42,0.05)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.04)",
   },
 };

@@ -1,3 +1,13 @@
+export type ShopCategory =
+  | "restaurant"
+  | "cafe"
+  | "supermarket"
+  | "drugstore"
+  | "shopping_mall"
+  | "public_facility"
+  | "baby_goods"
+  | "other";
+
 export type ServiceKey =
   | "diaper_change"
   | "diaper_trash"
@@ -14,6 +24,7 @@ export type Services = Record<ServiceKey, boolean>;
 export type Shop = {
   id: string;
   name: string;
+  category?: ShopCategory;
   lat: number;
   lng: number;
   address?: string;

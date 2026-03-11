@@ -8,6 +8,13 @@ function getMapsApiKey(): string {
   return key;
 }
 
+export function getGoogleMapId(): string {
+  return (
+    (import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string | undefined) ??
+    "DEMO_MAP_ID"
+  );
+}
+
 function ensureConfigured() {
   if (configured) return;
 

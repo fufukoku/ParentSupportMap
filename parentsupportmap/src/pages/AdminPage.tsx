@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Shop, ServiceKey, Services } from "../types";
+import type {
+  Shop,
+  ServiceKey,
+  Services,
+  ShopCategory,
+} from "../types";
 import type { Session } from "../repos/auth/types";
 import { SERVICE_META } from "../constants/serviceMeta";
 import AdminLocationPicker from "../components/AdminLocationPicker";
 import { buildAdminAuthHeaders } from "../repos/auth/getAccessToken";
+import {
+  SHOP_CATEGORY_META,
+  SHOP_CATEGORY_OPTIONS,
+  getShopCategoryLabel,
+} from "../constants/shopCategoryMeta";
 
 const ALL_SERVICE_KEYS: ServiceKey[] = [
   "diaper_change",
@@ -44,6 +54,12 @@ function emptyServices(): Services {
   };
 }
 
+function normalizeCategory(value: any): ShopCategory {
+  return SHOP_CATEGORY_OPTIONS.includes(value as ShopCategory)
+    ? (value as ShopCategory)
+    : "other";
+}
+
 function apiBase(): string {
   return (
     (import.meta as any).env?.VITE_API_BASE ??
@@ -59,6 +75,7 @@ function fromApiItem(a: any): Shop {
   return {
     id: String(a.shopId),
     name: a.nameJa || a.nameEn || "Unnamed",
+    category: normalizeCategory(a.category),
     lat: Number(a.lat ?? 0),
     lng: Number(a.lng ?? 0),
     address: a.address ?? "",
@@ -74,6 +91,7 @@ function toApiPayload(s: Shop) {
     shopId: s.id,
     nameJa: s.name,
     nameEn: "",
+    category: s.category ?? "other",
     descriptionJa: s.note ?? "",
     descriptionEn: "",
     address: s.address ?? "",
@@ -89,6 +107,7 @@ export default function AdminPage({ session }: { session: Session }) {
   const nav = useNavigate();
   const API = useMemo(() => apiBase(), []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   const [items, setItems] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,6 +116,28 @@ export default function AdminPage({ session }: { session: Session }) {
   const [editing, setEditing] = useState<Shop | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 980px)");
+    const update = () => setIsNarrow(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!editing) return;
+
+    const timer = window.setTimeout(() => {
+      editorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [editing]);
 
   const refresh = async () => {
     setLoading(true);
@@ -120,13 +161,13 @@ export default function AdminPage({ session }: { session: Session }) {
       return;
     }
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [nav, session.role]);
 
   const startAdd = () => {
     setEditing({
       id: "",
       name: "",
+      category: "other",
       lat: 35.6762,
       lng: 139.6503,
       address: "",
@@ -139,7 +180,7 @@ export default function AdminPage({ session }: { session: Session }) {
   const startEdit = (s: Shop) => setEditing({ ...s });
 
   const del = async (s: Shop) => {
-    if (!confirm(`Delete "${s.name}" ?`)) return;
+    if (!confirm(`「${s.name}」を削除しますか？`)) return;
     setErr(null);
 
     try {
@@ -163,11 +204,11 @@ export default function AdminPage({ session }: { session: Session }) {
     if (!editing) return;
 
     if (!editing.name.trim()) {
-      return setErr("Name is required");
+      return setErr("施設名を入力してください。");
     }
 
     if (!Number.isFinite(editing.lat) || !Number.isFinite(editing.lng)) {
-      return setErr("lat/lng invalid");
+      return setErr("緯度・経度が不正です。");
     }
 
     setSaving(true);
@@ -178,7 +219,6 @@ export default function AdminPage({ session }: { session: Session }) {
 
       if (!editing.id) {
         const payload = toApiPayload({ ...editing, id: undefined as any });
-
         const res = await fetch(`${API}/shops`, {
           method: "POST",
           headers: {
@@ -187,11 +227,9 @@ export default function AdminPage({ session }: { session: Session }) {
           },
           body: JSON.stringify(payload),
         });
-
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } else {
         const payload = toApiPayload(editing);
-
         const res = await fetch(`${API}/shops/${encodeURIComponent(editing.id)}`, {
           method: "PUT",
           headers: {
@@ -200,7 +238,6 @@ export default function AdminPage({ session }: { session: Session }) {
           },
           body: JSON.stringify(payload),
         });
-
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       }
 
@@ -229,12 +266,12 @@ export default function AdminPage({ session }: { session: Session }) {
 
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (!allowed.includes(file.type)) {
-      setErr("Only JPG / PNG / WEBP / GIF are supported");
+      setErr("JPG / PNG / WEBP / GIF のみ対応しています。");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setErr("Image must be 5MB or smaller");
+      setErr("画像サイズは 5MB 以下にしてください。");
       return;
     }
 
@@ -299,7 +336,13 @@ export default function AdminPage({ session }: { session: Session }) {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 1080, margin: "0 auto" }}>
+    <div
+      style={{
+        padding: isNarrow ? 10 : 16,
+        maxWidth: 1080,
+        margin: "0 auto",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -310,19 +353,18 @@ export default function AdminPage({ session }: { session: Session }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 20, fontWeight: 900 }}>Admin</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>API: {API}</div>
+          <div style={{ fontSize: 22, fontWeight: 900 }}>管理画面</div>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => nav("/")} style={btnGhost}>
-            Back
+            戻る
           </button>
           <button onClick={refresh} style={btnGhost} disabled={loading}>
-            Refresh
+            再読み込み
           </button>
           <button onClick={startAdd} style={btnPrimary}>
-            Add shop
+            施設を追加
           </button>
         </div>
       </div>
@@ -346,87 +388,160 @@ export default function AdminPage({ session }: { session: Session }) {
         style={{
           marginTop: 12,
           border: "1px solid #e5e7eb",
-          borderRadius: 16,
+          borderRadius: 18,
           overflow: "hidden",
           background: "white",
+          boxShadow: "0 12px 30px rgba(15,23,42,0.04)",
         }}
       >
-        <div style={{ padding: 12, borderBottom: "1px solid #eef0f6", fontWeight: 900 }}>
-          Shops ({items.length})
+        <div
+          style={{
+            padding: "14px 16px",
+            borderBottom: "1px solid #eef0f6",
+            fontWeight: 900,
+            fontSize: 16,
+          }}
+        >
+          施設一覧 ({items.length})
         </div>
 
         {loading ? <div style={{ padding: 12, color: "#6b7280" }}>Loading…</div> : null}
         {!loading && items.length === 0 ? (
-          <div style={{ padding: 12, color: "#6b7280" }}>No shops</div>
+          <div style={{ padding: 12, color: "#6b7280" }}>施設がありません</div>
         ) : null}
 
-        {items.map((s) => (
-          <div
-            key={s.id}
-            style={{
-              padding: 12,
-              borderTop: "1px solid #eef0f6",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-            }}
-          >
-            <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={listThumbWrap}>
-                {s.photos?.[0] ? (
-                  <img src={s.photos[0]} alt={s.name} style={listThumb} />
-                ) : (
-                  <div style={listThumbEmpty}>📍</div>
-                )}
+        {items.map((s) => {
+          const categoryMeta = SHOP_CATEGORY_META[s.category ?? "other"];
+          const categoryLabel = getShopCategoryLabel("ja", s.category ?? "other");
+
+          return (
+            <div
+              key={s.id}
+              style={{
+                padding: 14,
+                borderTop: "1px solid #eef0f6",
+                display: "flex",
+                alignItems: isNarrow ? "stretch" : "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexDirection: isNarrow ? "column" : "row",
+              }}
+            >
+              <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={listThumbWrap}>
+                  {s.photos?.[0] ? (
+                    <img src={s.photos[0]} alt={s.name} style={listThumb} />
+                  ) : (
+                    <div style={listThumbEmpty}>📍</div>
+                  )}
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: "#334155",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>{categoryMeta.emoji}</span>
+                    <span>{categoryLabel}</span>
+                  </div>
+
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      fontSize: 16,
+                      color: "#0f172a",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {s.name}
+                  </div>
+
+                  {s.address ? (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 12,
+                        color: "#6b7280",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {s.address}
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
-              <div style={{ minWidth: 0 }}>
-                <div
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flex: "0 0 auto",
+                  width: isNarrow ? "100%" : undefined,
+                }}
+              >
+                <button
+                  onClick={() => startEdit(s)}
                   style={{
-                    fontWeight: 900,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    ...btnGhost,
+                    flex: isNarrow ? 1 : undefined,
                   }}
                 >
-                  {s.name}
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {s.id} · {s.address ?? ""}
-                </div>
+                  編集
+                </button>
+                <button
+                  onClick={() => del(s)}
+                  style={{
+                    ...btnDanger,
+                    flex: isNarrow ? 1 : undefined,
+                  }}
+                >
+                  削除
+                </button>
               </div>
             </div>
-
-            <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
-              <button onClick={() => startEdit(s)} style={btnGhost}>
-                Edit
-              </button>
-              <button onClick={() => del(s)} style={btnDanger}>
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {editing ? (
         <div
+          ref={editorRef}
           style={{
             marginTop: 16,
             border: "1px solid #e5e7eb",
-            borderRadius: 16,
+            borderRadius: 18,
             background: "white",
-            padding: 14,
+            padding: isNarrow ? 12 : 16,
+            boxShadow: "0 12px 30px rgba(15,23,42,0.04)",
           }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 12, fontSize: 16 }}>
-            {editing.id ? "Edit shop" : "Add shop"}
+          <div style={{ fontWeight: 900, marginBottom: 12, fontSize: 17 }}>
+            {editing.id ? "施設を編集" : "施設を追加"}
           </div>
 
-          <div style={grid2}>
+          <div
+            style={{
+              ...grid2,
+              gridTemplateColumns: isNarrow
+                ? "1fr"
+                : "repeat(2, minmax(0, 1fr))",
+            }}
+          >
             <label style={field}>
-              <div style={lab}>Name (JA)</div>
+              <div style={lab}>施設名</div>
               <input
                 style={input}
                 value={editing.name}
@@ -435,7 +550,27 @@ export default function AdminPage({ session }: { session: Session }) {
             </label>
 
             <label style={field}>
-              <div style={lab}>Address</div>
+              <div style={lab}>施設タイプ</div>
+              <select
+                style={input}
+                value={editing.category}
+                onChange={(e) =>
+                  setEditing({
+                    ...editing,
+                    category: normalizeCategory(e.target.value),
+                  })
+                }
+              >
+                {SHOP_CATEGORY_OPTIONS.map((k) => (
+                  <option key={k} value={k}>
+                    {SHOP_CATEGORY_META[k].emoji} {getShopCategoryLabel("ja", k)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ ...field, gridColumn: "1 / -1" }}>
+              <div style={lab}>住所</div>
               <input
                 style={input}
                 value={editing.address ?? ""}
@@ -444,7 +579,7 @@ export default function AdminPage({ session }: { session: Session }) {
             </label>
 
             <label style={field}>
-              <div style={lab}>Lat</div>
+              <div style={lab}>緯度</div>
               <input
                 style={input}
                 type="number"
@@ -460,7 +595,7 @@ export default function AdminPage({ session }: { session: Session }) {
             </label>
 
             <label style={field}>
-              <div style={lab}>Lng</div>
+              <div style={lab}>経度</div>
               <input
                 style={input}
                 type="number"
@@ -492,7 +627,7 @@ export default function AdminPage({ session }: { session: Session }) {
             </div>
 
             <label style={{ ...field, gridColumn: "1 / -1" }}>
-              <div style={lab}>Note</div>
+              <div style={lab}>メモ</div>
               <textarea
                 style={{ ...input, minHeight: 88, resize: "vertical" }}
                 value={editing.note ?? ""}
@@ -501,8 +636,8 @@ export default function AdminPage({ session }: { session: Session }) {
             </label>
           </div>
 
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Images</div>
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>画像</div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <button
@@ -511,7 +646,7 @@ export default function AdminPage({ session }: { session: Session }) {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
               >
-                {uploading ? "Uploading..." : "Upload image"}
+                {uploading ? "アップロード中..." : "画像を追加"}
               </button>
 
               <div style={{ fontSize: 12, color: "#6b7280" }}>
@@ -539,14 +674,14 @@ export default function AdminPage({ session }: { session: Session }) {
                     onClick={() => removePhoto(idx)}
                     style={removePhotoBtn}
                   >
-                    Remove
+                    削除
                   </button>
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={{ marginTop: 14, fontWeight: 900 }}>Services</div>
+          <div style={{ marginTop: 16, fontWeight: 900 }}>対応サービス</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
             {ALL_SERVICE_KEYS.map((k) => {
               const active = Boolean(editing.services?.[k]);
@@ -564,16 +699,16 @@ export default function AdminPage({ session }: { session: Session }) {
             })}
           </div>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+          <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               onClick={() => setEditing(null)}
               style={btnGhost}
               disabled={saving || uploading}
             >
-              Cancel
+              キャンセル
             </button>
             <button onClick={save} style={btnPrimary} disabled={saving || uploading}>
-              {saving ? "Saving..." : "Save"}
+              {saving ? "保存中..." : "保存"}
             </button>
           </div>
         </div>
@@ -584,7 +719,6 @@ export default function AdminPage({ session }: { session: Session }) {
 
 const grid2: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   gap: 10,
 };
 
@@ -604,6 +738,8 @@ const input: React.CSSProperties = {
   borderRadius: 12,
   padding: "10px 12px",
   fontSize: 14,
+  width: "100%",
+  boxSizing: "border-box",
 };
 
 const btnGhost: React.CSSProperties = {
@@ -678,9 +814,9 @@ const removePhotoBtn: React.CSSProperties = {
 };
 
 const listThumbWrap: React.CSSProperties = {
-  width: 52,
-  height: 52,
-  borderRadius: 12,
+  width: 68,
+  height: 68,
+  borderRadius: 16,
   overflow: "hidden",
   border: "1px solid #e5e7eb",
   background: "#f9fafb",
