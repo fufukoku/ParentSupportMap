@@ -4,6 +4,7 @@ import type { Shop, ServiceKey, Services } from "../types";
 import type { Session } from "../repos/auth/types";
 import { SERVICE_META } from "../constants/serviceMeta";
 import AdminLocationPicker from "../components/AdminLocationPicker";
+import { buildAdminAuthHeaders } from "../repos/auth/getAccessToken";
 
 const ALL_SERVICE_KEYS: ServiceKey[] = [
   "diaper_change",
@@ -140,10 +141,17 @@ export default function AdminPage({ session }: { session: Session }) {
   const del = async (s: Shop) => {
     if (!confirm(`Delete "${s.name}" ?`)) return;
     setErr(null);
+
     try {
+      const authHeaders = await buildAdminAuthHeaders();
+
       const res = await fetch(`${API}/shops/${encodeURIComponent(s.id)}`, {
         method: "DELETE",
+        headers: {
+          ...authHeaders,
+        },
       });
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await refresh();
     } catch (e: any) {
@@ -166,21 +174,33 @@ export default function AdminPage({ session }: { session: Session }) {
     setErr(null);
 
     try {
+      const authHeaders = await buildAdminAuthHeaders();
+
       if (!editing.id) {
         const payload = toApiPayload({ ...editing, id: undefined as any });
+
         const res = await fetch(`${API}/shops`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
           body: JSON.stringify(payload),
         });
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } else {
         const payload = toApiPayload(editing);
+
         const res = await fetch(`${API}/shops/${encodeURIComponent(editing.id)}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
           body: JSON.stringify(payload),
         });
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       }
 
@@ -222,9 +242,14 @@ export default function AdminPage({ session }: { session: Session }) {
     setErr(null);
 
     try {
+      const authHeaders = await buildAdminAuthHeaders();
+
       const presignRes = await fetch(`${API}/uploads/presign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
         body: JSON.stringify({
           filename: file.name,
           contentType: file.type,

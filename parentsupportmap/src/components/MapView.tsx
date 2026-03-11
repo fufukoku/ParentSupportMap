@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Shop, ServiceKey } from "../types";
 import type { Lang } from "../i18n";
 import { t } from "../i18n";
-import { loadGoogleMaps } from "../lib/maps";
+import { loadMapsLibrary, loadMarkerLibrary } from "../lib/maps";
 import { SERVICE_META } from "../constants/serviceMeta";
 
 type Props = {
@@ -46,12 +46,14 @@ export default function MapView({ lang, shops, onSelect }: Props) {
     let cancelled = false;
 
     (async () => {
-      await loadGoogleMaps();
+      const { Map, InfoWindow } = await loadMapsLibrary();
+      await loadMarkerLibrary();
+
       if (cancelled) return;
       if (!mapDivRef.current) return;
 
       if (!mapRef.current) {
-        mapRef.current = new google.maps.Map(mapDivRef.current, {
+        mapRef.current = new Map(mapDivRef.current, {
           center,
           zoom: 8,
           mapTypeControl: false,
@@ -61,7 +63,7 @@ export default function MapView({ lang, shops, onSelect }: Props) {
       }
 
       if (!infoWindowRef.current) {
-        infoWindowRef.current = new google.maps.InfoWindow();
+        infoWindowRef.current = new InfoWindow();
       }
 
       const map = mapRef.current;
@@ -146,7 +148,9 @@ export default function MapView({ lang, shops, onSelect }: Props) {
     setLocating(true);
 
     try {
-      await loadGoogleMaps();
+      await loadMapsLibrary();
+      await loadMarkerLibrary();
+
       const map = mapRef.current;
       if (!map) throw new Error("Map not initialized yet");
 

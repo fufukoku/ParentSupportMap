@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { loadGoogleMaps } from "../lib/maps";
+import {
+  loadMapsLibrary,
+  loadMarkerLibrary,
+  loadGeocodingLibrary,
+} from "../lib/maps";
 
 type Props = {
   lat: number;
@@ -26,14 +30,19 @@ export default function AdminLocationPicker({
     let cancelled = false;
 
     (async () => {
-      await loadGoogleMaps();
+      const { Map } = await loadMapsLibrary();
+      await loadMarkerLibrary();
+      await loadGeocodingLibrary();
+
       if (cancelled) return;
       if (!mapDivRef.current) return;
 
-      geocoderRef.current = new google.maps.Geocoder();
+      if (!geocoderRef.current) {
+        geocoderRef.current = new google.maps.Geocoder();
+      }
 
       if (!mapRef.current) {
-        const map = new google.maps.Map(mapDivRef.current, {
+        const map = new Map(mapDivRef.current, {
           center: { lat, lng },
           zoom: 13,
           mapTypeControl: false,
@@ -77,7 +86,7 @@ export default function AdminLocationPicker({
     return () => {
       cancelled = true;
     };
-  }, [onPick]);
+  }, [onPick, lat, lng]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -99,7 +108,7 @@ export default function AdminLocationPicker({
     setGeoErr(null);
 
     try {
-      await loadGoogleMaps();
+      await loadGeocodingLibrary();
 
       if (!geocoderRef.current) {
         geocoderRef.current = new google.maps.Geocoder();
