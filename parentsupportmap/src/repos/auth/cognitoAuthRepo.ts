@@ -6,6 +6,7 @@ import {
   confirmSignUp,
   getCurrentUser,
   fetchUserAttributes,
+  fetchAuthSession,
 } from "aws-amplify/auth";
 import type {
   AuthRepo,
@@ -18,10 +19,11 @@ import type {
 
 const userPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID as string | undefined;
 const userPoolClientId = import.meta.env.VITE_COGNITO_USER_POOL_CLIENT_ID as string | undefined;
-const adminEmailsRaw = (import.meta.env.VITE_ADMIN_EMAILS as string | undefined) ?? "";
 
 if (!userPoolId || !userPoolClientId) {
-  throw new Error("Missing Cognito env vars: VITE_COGNITO_USER_POOL_ID / VITE_COGNITO_USER_POOL_CLIENT_ID");
+  throw new Error(
+    "Missing Cognito env vars: VITE_COGNITO_USER_POOL_ID / VITE_COGNITO_USER_POOL_CLIENT_ID"
+  );
 }
 
 Amplify.configure({
@@ -36,13 +38,22 @@ Amplify.configure({
   },
 });
 
-function deriveRole(email: string): Role {
-  const adminEmails = adminEmailsRaw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
 
-  return adminEmails.includes(email.toLowerCase()) ? "admin" : "user";
+function parseGroups(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).toLowerCase());
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    return [raw.trim().toLowerCase()];
+  }
+  return [];
+}
+
+function deriveRoleFromGroups(groups: string[]): Role {
+  return groups.includes("admin") ? "admin" : "user";
 }
 
 function mapError(err: any): string {
@@ -65,15 +76,19 @@ async function buildSession(): Promise<Session | null> {
   try {
     const current = await getCurrentUser();
     const attrs = await fetchUserAttributes();
-    const email = attrs.email ?? "";
-    const userId = current.username || email || "user";
+    const authSession = await fetchAuthSession();
 
+    const email = attrs.email ? normalizeEmail(attrs.email) : "";
     if (!email) return null;
 
+    const idPayload = authSession.tokens?.idToken?.payload;
+    const groups = parseGroups(idPayload?.["cognito:groups"]);
+    const role = deriveRoleFromGroups(groups);
+
     return {
-      userId,
+      userId: current.username || email,
       email,
-      role: deriveRole(email),
+      role,
     };
   } catch {
     return null;
@@ -88,19 +103,22 @@ export function cognitoAuthRepo(): AuthRepo {
 
     async login({ identifier, password }: LoginInput) {
       try {
+        const email = normalizeEmail(identifier);
+
         const res = await signIn({
-          username: identifier.trim(),
+          username: email,
           password,
         });
 
         if (res.nextStep?.signInStep && res.nextStep.signInStep !== "DONE") {
-          throw new Error("Additional sign-in step is required and is not supported in this flow yet.");
+          throw new Error(`Additional sign-in step is required: ${res.nextStep.signInStep}`);
         }
 
         const session = await buildSession();
         if (!session) throw new Error("Failed to create session.");
         return session;
       } catch (err: any) {
+        console.error("Cognito login error:", err);
         throw new Error(mapError(err));
       }
     },
@@ -111,18 +129,21 @@ export function cognitoAuthRepo(): AuthRepo {
 
     async register({ email, password }: RegisterInput) {
       try {
+        const normalizedEmail = normalizeEmail(email);
+
         await signUp({
-          username: email.trim(),
+          username: normalizedEmail,
           password,
           options: {
             userAttributes: {
-              email: email.trim(),
+              email: normalizedEmail,
             },
           },
         });
 
-        return { email: email.trim() };
+        return { email: normalizedEmail };
       } catch (err: any) {
+        console.error("Cognito register error:", err);
         throw new Error(mapError(err));
       }
     },
@@ -130,10 +151,11 @@ export function cognitoAuthRepo(): AuthRepo {
     async confirmSignUp({ email, code }: ConfirmSignUpInput) {
       try {
         await confirmSignUp({
-          username: email.trim(),
+          username: normalizeEmail(email),
           confirmationCode: code.trim(),
         });
       } catch (err: any) {
+        console.error("Cognito confirmSignUp error:", err);
         throw new Error(mapError(err));
       }
     },
