@@ -51,7 +51,7 @@ export default function FilterPanel({
           <div style={head}>
             <div style={title}>{lang === "ja" ? "絞り込み" : "Filter"}</div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={actions}>
               {selected.length > 0 ? (
                 <button type="button" onClick={clear} style={btnGhost}>
                   {lang === "ja" ? "クリア" : "Clear"}
@@ -98,12 +98,13 @@ const root: CSSProperties = {
   left: 12,
   top: 12,
   zIndex: 6,
+  maxWidth: "calc(100vw - 24px)",
 };
 
 const fab = (active: boolean): CSSProperties => ({
   position: "relative",
   border: "1px solid " + (active ? "#bfdbfe" : "#e7e9f0"),
-  background: active ? "#eff6ff" : "rgba(255,255,255,0.92)",
+  background: active ? "#eff6ff" : "rgba(255,255,255,0.94)",
   backdropFilter: "blur(6px)",
   borderRadius: 14,
   width: 44,
@@ -112,7 +113,7 @@ const fab = (active: boolean): CSSProperties => ({
   alignItems: "center",
   justifyContent: "center",
   cursor: "pointer",
-  boxShadow: "0 18px 50px rgba(0,0,0,0.12)",
+  boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
 });
 
 const badge: CSSProperties = {
@@ -135,14 +136,15 @@ const badge: CSSProperties = {
 
 const panel: CSSProperties = {
   marginTop: 10,
-  width: "min(360px, calc(100vw - 24px))",
-  maxHeight: "min(60vh, 520px)",
+  width: "min(320px, calc(100vw - 24px))",
+  maxWidth: "calc(100vw - 24px)",
+  maxHeight: "min(58vh, 460px)",
   overflowY: "auto",
   border: "1px solid #e7e9f0",
   borderRadius: 16,
   background: "rgba(255,255,255,0.96)",
   backdropFilter: "blur(6px)",
-  boxShadow: "0 18px 50px rgba(0,0,0,0.12)",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.12)",
   padding: 12,
   boxSizing: "border-box",
 };
@@ -160,6 +162,12 @@ const title: CSSProperties = {
   fontSize: 13,
   fontWeight: 900,
   color: "#111827",
+};
+
+const actions: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
 };
 
 const btnGhost: CSSProperties = {
@@ -185,7 +193,7 @@ const chip = (active: boolean): CSSProperties => ({
   borderRadius: 999,
   border: "1px solid " + (active ? "#bfdbfe" : "#e5e7eb"),
   background: active ? "#eff6ff" : "white",
-  padding: "8px 10px",
+  padding: "7px 10px",
   cursor: "pointer",
   maxWidth: "100%",
 });

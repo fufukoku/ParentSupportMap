@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Lang } from "../i18n";
 import { t } from "../i18n";
-import type { Shop } from "../types";
-import { SHOP_CATEGORY_META, getShopCategoryLabel } from "../constants/shopCategoryMeta";
-import ServiceBadges from "./ServiceBadges";
+import type { Shop, ServiceKey } from "../types";
+import { SERVICE_META } from "../constants/serviceMeta";
+import {
+  SHOP_CATEGORY_META,
+  getShopCategoryLabel,
+} from "../constants/shopCategoryMeta";
 
 export default function ShopDrawer({
   lang,
@@ -45,10 +48,10 @@ export default function ShopDrawer({
   const containerStyle: CSSProperties = isNarrow
     ? {
         position: "fixed",
-        left: 12,
-        right: 12,
-        bottom: 12,
-        height: "78vh",
+        left: 8,
+        right: 8,
+        bottom: 8,
+        height: "84dvh",
         borderRadius: 20,
         border: "1px solid #e7e9f0",
         background: "white",
@@ -85,18 +88,23 @@ export default function ShopDrawer({
         ) : (
           <>
             <div style={styles.top}>
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={categoryPill}>
                   <span>{categoryMeta.emoji}</span>
                   <span>{categoryLabel}</span>
                 </div>
 
                 <div style={styles.name}>{shop?.name ?? ""}</div>
+
                 {shop?.address ? (
-                  <div style={styles.addr}>
-                    {t[lang].address}: {shop.address}
-                  </div>
+                  <div style={styles.addr}>{shop.address}</div>
                 ) : null}
+
+                <div style={summaryRow}>
+                  <span style={summaryPill}>
+                    {lang === "ja" ? "対応" : "Available"} {serviceCount}/9
+                  </span>
+                </div>
               </div>
 
               <button onClick={onClose} type="button" style={styles.close} aria-label="Close">
@@ -105,22 +113,15 @@ export default function ShopDrawer({
             </div>
 
             <div style={styles.body}>
-              <div style={heroWrap}>
-                {photos.length > 0 ? (
+              {photos.length > 0 ? (
+                <div style={heroWrap}>
                   <img
                     src={photos[Math.min(photoIndex, photos.length - 1)]}
                     alt={shop?.name ?? "shop photo"}
                     style={heroImage}
                   />
-                ) : (
-                  <div style={heroEmpty}>
-                    <div style={{ fontSize: 30 }}>📍</div>
-                    <div style={{ marginTop: 8, fontWeight: 800, color: "#374151" }}>
-                      {lang === "ja" ? "画像はまだありません" : "No photos yet"}
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : null}
 
               {photos.length > 1 ? (
                 <div style={thumbRow}>
@@ -137,28 +138,44 @@ export default function ShopDrawer({
                 </div>
               ) : null}
 
-              <div style={{ marginTop: 16 }}>
-                <div style={styles.sectionHead}>
-                  <div style={styles.sectionTitle}>{t[lang].servicesTitle}</div>
-                  <div style={styles.sectionMeta}>
-                    {serviceCount} / 9
-                  </div>
+              <div style={{ marginTop: photos.length > 0 ? 12 : 0 }}>
+                <div style={sectionHead}>
+                  <div style={sectionTitle}>{t[lang].servicesTitle}</div>
+                  <div style={sectionMeta}>{serviceCount} / 9</div>
                 </div>
 
-                <div style={styles.sectionHint}>
-                  {lang === "ja"
-                    ? "下にスクロールすると、すべてのサービス項目を確認できます。"
-                    : "Scroll down to view all service items."}
-                </div>
+                <div style={serviceGrid}>
+                  {(Object.keys(shop!.services) as ServiceKey[]).map((key) => {
+                    const active = Boolean(shop!.services[key]);
+                    return (
+                      <div key={key} style={serviceCard(active)}>
+                        <div style={serviceIconBox(active)}>
+                          <span style={{ fontSize: 22 }}>{SERVICE_META[key].emoji}</span>
+                        </div>
 
-                <div style={{ marginTop: 10 }}>
-                  <ServiceBadges lang={lang} services={shop!.services} />
+                        <div style={serviceTextWrap}>
+                          <div style={serviceName}>
+                            {getCompactServiceLabel(lang, key)}
+                          </div>
+                          <div style={serviceStatus(active)}>
+                            {active
+                              ? lang === "ja"
+                                ? "あり"
+                                : "Yes"
+                              : lang === "ja"
+                              ? "なし"
+                              : "No"}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
               {shop?.note ? (
                 <div style={{ marginTop: 16 }}>
-                  <div style={styles.sectionTitle}>{t[lang].note}</div>
+                  <div style={sectionTitle}>{t[lang].note}</div>
                   <div style={styles.note}>{shop.note}</div>
                 </div>
               ) : null}
@@ -181,6 +198,36 @@ function EmptyState({ lang }: { lang: Lang }) {
   );
 }
 
+function getCompactServiceLabel(lang: Lang, key: ServiceKey): string {
+  if (lang === "ja") {
+    const ja: Record<ServiceKey, string> = {
+      diaper_change: "おむつ交換",
+      diaper_trash: "おむつゴミ箱",
+      kids_toilet: "子どもトイレ",
+      nursing_room: "授乳スペース",
+      stroller_access: "ベビーカー",
+      kids_chair_tableware: "椅子・食器",
+      parking_car: "駐車場",
+      parking_bicycle: "駐輪場",
+      hot_water: "お湯",
+    };
+    return ja[key];
+  }
+
+  const en: Record<ServiceKey, string> = {
+    diaper_change: "Diaper change",
+    diaper_trash: "Diaper bin",
+    kids_toilet: "Kids toilet",
+    nursing_room: "Nursing",
+    stroller_access: "Stroller",
+    kids_chair_tableware: "Kids chair",
+    parking_car: "Car parking",
+    parking_bicycle: "Bike parking",
+    hot_water: "Hot water",
+  };
+  return en[key];
+}
+
 const categoryPill: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -195,38 +242,44 @@ const categoryPill: CSSProperties = {
   marginBottom: 8,
 };
 
+const summaryRow: CSSProperties = {
+  marginTop: 8,
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summaryPill: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#1d4ed8",
+};
+
 const heroWrap: CSSProperties = {
   width: "100%",
-  borderRadius: 18,
+  height: 132,
+  borderRadius: 16,
   overflow: "hidden",
   background: "#f8fafc",
   border: "1px solid #eef0f6",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  aspectRatio: "16 / 9",
-  maxHeight: 240,
 };
 
 const heroImage: CSSProperties = {
   display: "block",
   width: "100%",
   height: "100%",
-  objectFit: "contain",
-  background: "#f8fafc",
-};
-
-const heroEmpty: CSSProperties = {
-  height: 220,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%)",
+  objectFit: "cover",
 };
 
 const thumbRow: CSSProperties = {
-  marginTop: 10,
+  marginTop: 8,
   display: "flex",
   gap: 8,
   overflowX: "auto",
@@ -236,7 +289,7 @@ const thumbRow: CSSProperties = {
 const thumbBtn = (active: boolean): CSSProperties => ({
   border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
   background: "white",
-  borderRadius: 12,
+  borderRadius: 10,
   padding: 0,
   overflow: "hidden",
   cursor: "pointer",
@@ -245,15 +298,91 @@ const thumbBtn = (active: boolean): CSSProperties => ({
 });
 
 const thumbImg: CSSProperties = {
-  width: 72,
-  height: 54,
+  width: 52,
+  height: 40,
   objectFit: "cover",
   display: "block",
 };
 
+const sectionHead: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  marginBottom: 10,
+};
+
+const sectionTitle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 900,
+  color: "#111827",
+};
+
+const sectionMeta: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#2563eb",
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: 999,
+  padding: "4px 8px",
+  flex: "0 0 auto",
+};
+
+const serviceGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 8,
+};
+
+const serviceCard = (active: boolean): CSSProperties => ({
+  border: "1px solid " + (active ? "#bfdbfe" : "#e5e7eb"),
+  background: active ? "#f8fbff" : "#ffffff",
+  borderRadius: 16,
+  padding: "10px 8px",
+  minHeight: 108,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "flex-start",
+  textAlign: "center",
+});
+
+const serviceIconBox = (active: boolean): CSSProperties => ({
+  width: 46,
+  height: 46,
+  borderRadius: 14,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: active ? "#eff6ff" : "#f8fafc",
+  border: "1px solid " + (active ? "#bfdbfe" : "#e5e7eb"),
+  flex: "0 0 auto",
+});
+
+const serviceTextWrap: CSSProperties = {
+  marginTop: 8,
+  minWidth: 0,
+};
+
+const serviceName: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: "#0f172a",
+  lineHeight: 1.25,
+  wordBreak: "break-word",
+};
+
+const serviceStatus = (active: boolean): CSSProperties => ({
+  marginTop: 4,
+  fontSize: 11,
+  fontWeight: 800,
+  color: active ? "#2563eb" : "#94a3b8",
+});
+
 const styles: Record<string, CSSProperties> = {
   top: {
-    padding: 14,
+    padding: 12,
     borderBottom: "1px solid #eef0f6",
     display: "flex",
     alignItems: "flex-start",
@@ -264,65 +393,46 @@ const styles: Record<string, CSSProperties> = {
   name: {
     fontSize: 18,
     fontWeight: 900,
-    lineHeight: 1.25,
+    lineHeight: 1.2,
     color: "#111827",
   },
   addr: {
     fontSize: 12,
     color: "#6b7280",
-    marginTop: 6,
-    lineHeight: 1.45,
+    marginTop: 4,
+    lineHeight: 1.35,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
   close: {
     border: "1px solid #e7e9f0",
     background: "white",
-    borderRadius: 12,
-    padding: "8px 10px",
+    borderRadius: 16,
+    width: 42,
+    height: 42,
     cursor: "pointer",
     boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
     flex: "0 0 auto",
+    color: "#2563eb",
+    fontSize: 22,
+    lineHeight: 1,
   },
   body: {
-    padding: 14,
+    padding: 12,
     overflowY: "auto",
-    height: "calc(100% - 92px)",
+    height: "calc(100% - 118px)",
     WebkitOverflowScrolling: "touch",
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: 900,
-    color: "#111827",
   },
   note: {
     fontSize: 13,
     color: "#374151",
     marginTop: 8,
-    lineHeight: 1.65,
+    lineHeight: 1.55,
     background: "#f9fafb",
     border: "1px solid #eef0f6",
     borderRadius: 14,
     padding: 12,
-  },
-  sectionHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  sectionMeta: {
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#2563eb",
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: 999,
-    padding: "4px 8px",
-    flex: "0 0 auto",
-  },
-  sectionHint: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#6b7280",
-    lineHeight: 1.4,
   },
 };

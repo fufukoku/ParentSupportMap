@@ -120,6 +120,11 @@ export default function MapView({ lang, shops, onSelect }: Props) {
           streetViewControl: false,
           fullscreenControl: true,
           mapId: getGoogleMapId(),
+          gestureHandling: isTouchLike ? "cooperative" : "greedy",
+        });
+      } else {
+        mapRef.current.setOptions({
+          gestureHandling: isTouchLike ? "cooperative" : "greedy",
         });
       }
 
