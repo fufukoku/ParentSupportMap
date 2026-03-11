@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { Lang } from "../i18n";
 import { t } from "../i18n";
 import type { Shop } from "../types";
+import { SHOP_CATEGORY_META, getShopCategoryLabel } from "../constants/shopCategoryMeta";
 import ServiceBadges from "./ServiceBadges";
 
 export default function ShopDrawer({
@@ -37,13 +38,17 @@ export default function ShopDrawer({
     return Object.values(shop.services ?? {}).filter(Boolean).length;
   }, [shop]);
 
+  const category = shop?.category ?? "other";
+  const categoryMeta = SHOP_CATEGORY_META[category];
+  const categoryLabel = getShopCategoryLabel(lang, category);
+
   const containerStyle: CSSProperties = isNarrow
     ? {
         position: "fixed",
         left: 12,
         right: 12,
         bottom: 12,
-        height: "82vh",
+        height: "78vh",
         borderRadius: 20,
         border: "1px solid #e7e9f0",
         background: "white",
@@ -81,6 +86,11 @@ export default function ShopDrawer({
           <>
             <div style={styles.top}>
               <div style={{ minWidth: 0 }}>
+                <div style={categoryPill}>
+                  <span>{categoryMeta.emoji}</span>
+                  <span>{categoryLabel}</span>
+                </div>
+
                 <div style={styles.name}>{shop?.name ?? ""}</div>
                 {shop?.address ? (
                   <div style={styles.addr}>
@@ -171,6 +181,20 @@ function EmptyState({ lang }: { lang: Lang }) {
   );
 }
 
+const categoryPill: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#334155",
+  marginBottom: 8,
+};
+
 const heroWrap: CSSProperties = {
   width: "100%",
   borderRadius: 18,
@@ -259,12 +283,16 @@ const styles: Record<string, CSSProperties> = {
     flex: "0 0 auto",
   },
   body: {
-  padding: 14,
-  overflowY: "auto",
-  height: "calc(100% - 76px)",
-  WebkitOverflowScrolling: "touch",
-},
-  sectionTitle: { fontSize: 13, fontWeight: 900, color: "#111827" },
+    padding: 14,
+    overflowY: "auto",
+    height: "calc(100% - 92px)",
+    WebkitOverflowScrolling: "touch",
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#111827",
+  },
   note: {
     fontSize: 13,
     color: "#374151",

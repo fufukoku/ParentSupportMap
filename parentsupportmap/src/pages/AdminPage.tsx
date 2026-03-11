@@ -243,6 +243,7 @@ export default function AdminPage({ session }: { session: Session }) {
 
       setEditing(null);
       await refresh();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
       setErr(e?.message || "Save failed");
     } finally {

@@ -35,7 +35,6 @@ export default function FilterPanel({
 
   return (
     <div style={root}>
-      {/* ✅ 漏斗按钮（地图左上角） */}
       <button
         type="button"
         onClick={onToggleOpen}
@@ -47,13 +46,12 @@ export default function FilterPanel({
         {selected.length > 0 ? <span style={badge}>{selected.length}</span> : null}
       </button>
 
-      {/* ✅ 面板 */}
       {open ? (
         <div style={panel}>
           <div style={head}>
             <div style={title}>{lang === "ja" ? "絞り込み" : "Filter"}</div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {selected.length > 0 ? (
                 <button type="button" onClick={clear} style={btnGhost}>
                   {lang === "ja" ? "クリア" : "Clear"}
@@ -137,22 +135,25 @@ const badge: CSSProperties = {
 
 const panel: CSSProperties = {
   marginTop: 10,
-  width: 360,
-  maxWidth: "calc(100vw - 24px)",
+  width: "min(360px, calc(100vw - 24px))",
+  maxHeight: "min(60vh, 520px)",
+  overflowY: "auto",
   border: "1px solid #e7e9f0",
   borderRadius: 16,
-  background: "rgba(255,255,255,0.92)",
+  background: "rgba(255,255,255,0.96)",
   backdropFilter: "blur(6px)",
   boxShadow: "0 18px 50px rgba(0,0,0,0.12)",
   padding: 12,
+  boxSizing: "border-box",
 };
 
 const head: CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "space-between",
   gap: 10,
   marginBottom: 10,
+  flexWrap: "wrap",
 };
 
 const title: CSSProperties = {
